@@ -2,18 +2,24 @@
 
 import Image from "next/image";
 
-import React from "react";
+import React, { useRef } from "react";
 import PlayButton from "@/components/PlayButton";
 import Counter from "@/components/Counter";
 
+
 export default function Home() {
+  const PlayersRef = useRef<HTMLInputElement | null>(null);
+  const ImpostersRef = useRef<HTMLInputElement | null>(null);
+  // Going to just use useState instead and use them in the components as a prop
+
   const HandleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const formData = new FormData(e.currentTarget);
 
     const numPlayers = formData.get("numPlayers");
-    console.log(numPlayers);
+    console.log(PlayersRef.current?.value);
+    console.log(ImpostersRef.current?.value);
   }
 
   return (
@@ -27,11 +33,11 @@ export default function Home() {
           {/* Top controls */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <Section title="Number of Players">
-              <Counter DefaultValue={5} Name="numPlayers" Min={3} Max={20} />
+              <Counter ref={PlayersRef} DefaultValue={5} Name="numPlayers" Min={3} Max={20} />
             </Section>
 
             <Section title="Number of Imposters">
-              <Counter DefaultValue={1} Name="numImposters" Min={-2} Max={20} />
+              <Counter ref={ImpostersRef} DefaultValue={1} Name="numImposters" Min={-2} Max={20} />
             </Section>
           </div>
 

@@ -1,10 +1,28 @@
 "use client";
 
 import Image from "next/image";
-
+import { useState } from 'react';
 import React from "react";
 import PlayButton from "@/components/PlayButton";
 import Counter from "@/components/Counter";
+import Themes from "@/components/Themes";
+import styled from 'styled-components';
+
+
+
+const StyledSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+`;
+const SectionTitle = styled.div`
+  color: #18181b;  /* Samme som text-zinc-900 */
+  font-size: 0.875rem; /* 14px - samme som text-sm */
+  margin-bottom: 0.5rem; /* samme som mb-2 */
+  width: 100%;
+`;
 
 export default function Home() {
   const HandleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -16,7 +34,15 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-black to-zinc-900 flex items-center justify-center p-4">
+    <div className="
+      flex
+      min-h-screen
+      bg-linear-to-br
+      from-red
+      to-zinc-900
+      items-center
+      justify-center
+      p-4">
       <div className="w-full max-w-md md:max-w-4xl">
         <form onSubmit={ HandleSubmit } className="bg-zinc-900/90 rounded-3xl shadow-2xl p-6 md:p-10">
           <h1 className="text-white text-3xl md:text-4xl font-semibold text-center mb-8">
@@ -45,44 +71,12 @@ export default function Home() {
   );
 }
 
-function Section({ title, children }: { title: string, children: any }) {
+
+function Section({ title, children }: { title: string, children: React.ReactNode }) {
   return (
-    <div>
-      <div className="text-zinc-300 text-sm mb-2">{title}</div>
+    <StyledSection>
+      <SectionTitle>{title}</SectionTitle>
       {children}
-    </div>
-  );
-}
-
-
-
-function Themes() {
-  const items = [
-    "Objects",
-    "Animals",
-    "Food & Drink",
-    "Roles",
-    "Clothing",
-    "Geography",
-    "Plants",
-    "Space",
-  ];
-
-  return (
-    <div className="mb-8">
-      <div className="text-zinc-300 text-sm mb-3 text-center">Themes</div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        {items.map((item) => (
-          <button
-            type="button"
-            key={item}
-            className="flex items-center gap-2 bg-zinc-800 rounded-xl px-3 py-2 text-zinc-200 text-sm"
-          >
-            <span className="w-4 h-4 rounded-full border border-zinc-500" />
-            {item}
-          </button>
-        ))}
-      </div>
-    </div>
+    </StyledSection>
   );
 }

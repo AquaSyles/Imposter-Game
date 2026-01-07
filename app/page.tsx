@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import PlayButton from "@/components/PlayButton";
 import Themes from "@/components/Themes";
 import styled from 'styled-components';

@@ -76,22 +76,30 @@ const ThemesHeader = styled.h2`
 `;
 
 const FeaturedThemes = styled.div`
+  display: grid;
   background: #2d3748;
   border-radius: 0.75rem;
   padding: 1.5rem;
-  margin-bottom: 2rem;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  align-items: center;
+  align-text: center;
 `;
 
 const FeaturedTitle = styled.h3`
   color: #e2e8f0;
   font-size: 1.25rem;
   margin-bottom: 1rem;
+  margin-right: auto;
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 0.5rem;
 
   &::before {
+    content: '★';
+    color: #f6e05e;
+  }
+    &:after {
     content: '★';
     color: #f6e05e;
   }
@@ -243,29 +251,38 @@ export default function Themes() {
   const [selectedThemes, setSelectedThemes] = useState<Set<string>>(new Set());
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
-  const themeCategories: ThemeCategory[] = [
-    {
-      id: 'nature',
-      name: 'Nature',
-      items: ['All Nature', 'Plants', 'Animals', 'Landscapes', 'Weather']
-    },
-    {
-      id: 'space',
-      name: 'Space',
-      items: ['All Space', 'Planets', 'Galaxies', 'Spacecraft', 'Astronauts']
-    },
-    {
-      id: 'entertainment',
-      name: 'Entertainment',
-      items: ['All Entertainment', 'Movies', 'TV Shows', 'Actors', 'Directors']
-    },
-    {
-      id: 'games',
-      name: 'Games',
-      items: ['All Games', 'Video Games', 'Board Games', 'Card Games', 'Mobile Games']
-    }
-  ];
-
+ const themeCategories = [
+  {
+    id: 'nature',
+    name: 'Nature',
+    items: ['Forest', 'Mountains', 'Beach', 'Desert', 'Jungle', 'Arctic']
+  },
+  {
+    id: 'animals',
+    name: 'Animals',
+    items: ['Mammals', 'Birds', 'Reptiles', 'Amphibians', 'Fish', 'Insects']
+  },
+  {
+    id: 'food',
+    name: 'Food & Drink',
+    items: ['Fruits', 'Vegetables', 'Desserts', 'Beverages', 'Snacks', 'Meals']
+  },
+  {
+    id: 'careers',
+    name: 'Careers',
+    items: ['Doctor', 'Engineer', 'Teacher', 'Artist', 'Scientist', 'Chef']
+  },
+  {
+    id: 'technology',
+    name: 'Technology',
+    items: ['Gadgets', 'AI', 'Programming', 'Robotics', 'Space Tech', 'VR/AR']
+  },
+  {
+    id: 'sports',
+    name: 'Sports',
+    items: ['Soccer', 'Basketball', 'Tennis', 'Swimming', 'Athletics', 'Cycling']
+  }
+];
   const featuredThemes = [
     'Animals',
     'Planets',
@@ -275,16 +292,17 @@ export default function Themes() {
   ];
 
   const toggleCategory = (categoryId: string) => {
-    setExpandedCategories(prev => {
-      const newCategories = new Set(prev);
-      if (newCategories.has(categoryId)) {
-        newCategories.delete(categoryId);
-      } else {
-        newCategories.add(categoryId);
-      }
-      return newCategories;
-    });
-  };
+  setExpandedCategories(prev => {
+    const newSet = new Set(prev);
+    if (newSet.has(categoryId)) {
+      newSet.delete(categoryId);
+    } else {
+      // Close all other categories first
+      setExpandedCategories(new Set([categoryId]));
+    }
+    return newSet;
+  });
+};
 
   const toggleTheme = (theme: string, categoryItems: string[]) => {
     setSelectedThemes(prev => {
@@ -315,10 +333,10 @@ export default function Themes() {
   return (
     <>
       <StarryBackground />
-      <GlowingBorder>
+      
         <ThemesContainer>
           <ThemesHeader>Game Themes</ThemesHeader>
-          
+          <GlowingBorder>
           <FeaturedThemes>
             <FeaturedTitle>Featured Themes</FeaturedTitle>
             <FeaturedThemesGrid>
@@ -338,7 +356,7 @@ export default function Themes() {
               ))}
             </FeaturedThemesGrid>
           </FeaturedThemes>
-
+         </GlowingBorder>
           <CategoriesRow>
             {themeCategories.map(category => {
               const isExpanded = expandedCategories.has(category.id);
@@ -395,7 +413,7 @@ export default function Themes() {
             value={Array.from(selectedThemes).join(',')}
           />
         </ThemesContainer>
-      </GlowingBorder>
+      
     </>
   );
 }

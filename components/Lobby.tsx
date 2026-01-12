@@ -181,7 +181,7 @@ export default function Lobby({ onStartGame, players, onJoinGame, onCreateGame, 
       <PlayersGrid>
         {players.map((player) => (
           <PlayerCard key={player.uid}>
-            <AstronautAvatar size={100} />
+            <AstronautAvatar size={80} />
             <PlayerName className={player.playerId === 100 ? 'host' : ''}>
               {player.name}
               {player.playerId === 100 && ' (Host)'}
@@ -194,7 +194,7 @@ export default function Lobby({ onStartGame, players, onJoinGame, onCreateGame, 
         {!showJoinForm ? (
           <>
             <Button 
-              onClick={onCreateGame}
+              onClick={() => onCreateGame?.()}
               $variant="primary"
               style={{ width: '100%', justifyContent: 'center' }}
             >

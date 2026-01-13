@@ -1,15 +1,26 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import styled from "styled-components";
+import Image from "next/image";
+import { FaCog, FaTimes } from "react-icons/fa";
+
 import Lobby from "@/components/Lobby";
 import Themes from "@/components/Themes";
-import styled from "styled-components";
-import { FaCog, FaTimes } from "react-icons/fa";
-import { AstronautAvatar } from "@/components/avatar";
 import SettingsPanel from "@/components/settings";
-import Image from "next/image";
+
+import { AstronautAvatar } from "@/components/avatars/AstronautAvatar";
+import { RedAstronautAvatar } from "@/components/avatars/RedAstronautAvatar";
+
 import type { Player } from "@/types/player";
 import { createLobby, joinLobby, listenToLobbyPlayers } from "@/firebase/lobby";
+
+import {
+  readSkin,
+  readType,
+  type AvatarSkin,
+  type AvatarType,
+} from "@/firebase/avatarPrefs";
 
 /* ---------------- helpers ---------------- */
 
@@ -21,6 +32,268 @@ function getOrCreateUid() {
   const uid = crypto.randomUUID();
   localStorage.setItem(key, uid);
   return uid;
+}
+
+/* ---------------- background component ---------------- */
+
+const StarryBackground = () => {
+  const [stars, setStars] = useState<
+    Array<{ id: number; top: string; left: string; delay: string }>
+  >([]);
+
+  useEffect(() => {
+    const starsArray = Array(100)
+      .fill(0)
+      .map((_, i) => ({
+        id: i,
+        top: `${Math.random() * 100}%`,
+        left: `${Math.random() * 100}%`,
+        delay: `${Math.random() * 3}s`,
+      }));
+    setStars(starsArray);
+  }, []);
+
+  return (
+    <StarBackground>
+      {stars.map((star) => (
+        <Star
+          key={star.id}
+          $top={star.top}
+          $left={star.left}
+          $delay={star.delay}
+        />
+      ))}
+    </StarBackground>
+  );
+};
+
+/* ---------------- page ---------------- */
+
+export default function Home() {
+  const uid = useMemo(() => getOrCreateUid(), []);
+
+  const [showThemes, setShowThemes] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+  const [isCopied, setIsCopied] = useState(false);
+
+  const [myPlayer, setMyPlayer] = useState<Player | null>(null);
+  const [lobbyPlayers, setLobbyPlayers] = useState<Player[]>([]);
+
+  const [isHost, setIsHost] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+
+  const [showSettings, setShowSettings] = useState(false);
+
+  // ✅ prefs (type + skin)
+  const [avatarType, setAvatarType] = useState<AvatarType>("classicAstronaut");
+  const [skin, setSkin] = useState<AvatarSkin>("classic");
+
+  // ✅ init prefs
+  useEffect(() => {
+    setAvatarType(readType(uid));
+    setSkin(readSkin(uid));
+  }, [uid]);
+
+  // ✅ live-update when SettingsPanel changes prefs
+  useEffect(() => {
+    const onPrefs = () => {
+      setAvatarType(readType(uid));
+      setSkin(readSkin(uid));
+    };
+
+    window.addEventListener("imposter:avatarPrefs", onPrefs);
+    return () => window.removeEventListener("imposter:avatarPrefs", onPrefs);
+  }, [uid]);
+
+  const handleAvatarTypeChange = useCallback((newType: AvatarType) => {
+    setAvatarType(newType);
+  }, []);
+
+  const handleSkinChange = useCallback((newSkin: AvatarSkin) => {
+    setSkin(newSkin);
+  }, []);
+
+  const AvatarComponent =
+    avatarType === "redAstronaut" ? RedAstronautAvatar : AstronautAvatar;
+
+  const copyToClipboard = () => {
+    if (!inviteCode) return;
+    navigator.clipboard.writeText(inviteCode);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  const setupLobby = useCallback(
+    async (isNewGame = false, codeToJoin?: string) => {
+      let player = myPlayer;
+      if (!player) {
+        player = {
+          uid,
+          playerId: 0,
+          name: `Player ${Math.floor(100 + Math.random() * 900)}`,
+          avatar: "astronaut",
+          joinedAt: Date.now(),
+        };
+        setMyPlayer(player);
+      }
+
+      if (isNewGame) {
+        const host: Player = { ...player, playerId: 100, joinedAt: Date.now() };
+
+        const characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        const code = Array.from({ length: 6 }, () =>
+          characters[Math.floor(Math.random() * characters.length)]
+        ).join("");
+
+        await createLobby(code, host);
+
+        setMyPlayer(host);
+        setInviteCode(code);
+        setIsHost(true);
+        return;
+      }
+
+      if (codeToJoin) {
+        const joiner: Player = { ...player, playerId: 0, joinedAt: Date.now() };
+        await joinLobby(codeToJoin, joiner);
+
+        setMyPlayer(joiner);
+        setInviteCode(codeToJoin);
+        setIsHost(false);
+        return;
+      }
+    },
+    [uid, myPlayer]
+  );
+
+  const handleCreateGame = useCallback(async () => {
+    if (isCreating) return;
+    setIsCreating(true);
+    try {
+      await setupLobby(true);
+    } finally {
+      setIsCreating(false);
+    }
+  }, [setupLobby, isCreating]);
+
+  const handleJoinGame = useCallback(
+    async (code: string) => {
+      if (isCreating) return;
+      setIsCreating(true);
+      try {
+        await setupLobby(false, code);
+      } finally {
+        setIsCreating(false);
+      }
+    },
+    [setupLobby, isCreating]
+  );
+
+  useEffect(() => {
+    if (!inviteCode) return;
+    const unsub = listenToLobbyPlayers(inviteCode, setLobbyPlayers);
+    return () => unsub();
+  }, [inviteCode]);
+
+  // ---- dedupe + ordering (prevents duplicate "me") ----
+  const myUid = myPlayer?.uid;
+  const mergedPlayers = [...(myPlayer ? [myPlayer] : []), ...lobbyPlayers] as Player[];
+  const uniquePlayers = Array.from(new Map(mergedPlayers.map((p) => [p.uid, p])).values());
+
+  const orderedPlayers = myUid
+    ? [
+        ...uniquePlayers.filter((p) => p.uid === myUid),
+        ...uniquePlayers.filter((p) => p.uid !== myUid),
+      ]
+    : uniquePlayers;
+
+  return (
+    <>
+      <StarryBackground />
+
+      <PageContainer>
+        <GlowEffect />
+
+        {/* Top-right player container */}
+        <PlayerContainer>
+          <Bar>
+            <PlayerWrapper>
+              <SkinScope data-skin={skin}>
+                <AvatarComponent size={100} />
+              </SkinScope>
+
+              <PlayerName>
+                {myPlayer ? `${myPlayer.name} (You)` : "You (not in lobby)"}{" "}
+                {myPlayer?.playerId === 100 ? "👑" : ""}
+              </PlayerName>
+            </PlayerWrapper>
+          </Bar>
+
+          <Bar_2>
+            <VoteBadge>
+              <Image src="/Vote_V.png" alt="Vote V" width={50} height={50} priority />
+            </VoteBadge>
+
+            <SettingsButton onClick={() => setShowSettings(true)} aria-label="Open settings">
+              <FaCog />
+            </SettingsButton>
+          </Bar_2>
+        </PlayerContainer>
+
+        <MainContainer>
+          <InviteCode>
+            <CodeLabel>Invite Code</CodeLabel>
+            <CodeDisplay onClick={copyToClipboard} title="Click to copy">
+              {inviteCode || "Not created yet"}
+              {isCopied && (
+                <span style={{ marginLeft: "0.5rem", fontSize: "0.8rem", color: "#4ade80" }}>
+                  Copied!
+                </span>
+              )}
+            </CodeDisplay>
+          </InviteCode>
+
+          <Title>Imposter Game</Title>
+
+          <ViewContainer $isActive={!showThemes}>
+            <Lobby
+              onStartGame={() => setShowThemes(true)}
+              players={orderedPlayers}
+              onJoinGame={handleJoinGame}
+              onCreateGame={handleCreateGame}
+              isHost={isHost}
+              // (valgfritt) hvis du vil bruke skin/type inni Lobby også:
+              // avatarType={avatarType}
+              // skin={skin}
+            />
+          </ViewContainer>
+
+          <ViewContainer $isActive={showThemes}>
+            <Themes onBack={() => setShowThemes(false)} />
+          </ViewContainer>
+        </MainContainer>
+      </PageContainer>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <ModalOverlay onClick={() => setShowSettings(false)}>
+          <ModalCard onClick={(e) => e.stopPropagation()}>
+            <CloseBtn onClick={() => setShowSettings(false)} aria-label="Close settings">
+              <FaTimes />
+            </CloseBtn>
+
+            <SettingsPanel
+              uid={uid}
+              initialAvatarType={avatarType}
+              initialSkin={skin}
+              onAvatarTypeChange={handleAvatarTypeChange}
+              onSkinChange={handleSkinChange}
+            />
+          </ModalCard>
+        </ModalOverlay>
+      )}
+    </>
+  );
 }
 
 /* ---------------- styled ---------------- */
@@ -153,7 +426,6 @@ const VoteBadge = styled.div`
   }
 `;
 
-/* 🔥 rename to avoid conflict with SettingsPanel import */
 const SettingsButton = styled.button`
   display: flex;
   width: 60px;
@@ -217,8 +489,7 @@ const ViewContainer = styled.div<{ $isActive: boolean }>`
   position: ${({ $isActive }) => ($isActive ? "relative" : "absolute")};
   opacity: ${({ $isActive }) => ($isActive ? 1 : 0)};
   pointer-events: ${({ $isActive }) => ($isActive ? "auto" : "none")};
-  transform: ${({ $isActive }) =>
-    $isActive ? "translateY(0)" : "translateY(20px)"};
+  transform: ${({ $isActive }) => ($isActive ? "translateY(0)" : "translateY(20px)")};
 `;
 
 /* -------- modal -------- */
@@ -264,220 +535,54 @@ const CloseBtn = styled.button`
   }
 `;
 
-/* ---------------- background component ---------------- */
+/* ---------------- SkinScope (same as SettingsPanel) ---------------- */
 
-const StarryBackground = () => {
-  const [stars, setStars] = useState<
-    Array<{ id: number; top: string; left: string; delay: string }>
-  >([]);
+const SkinScope = styled.div`
+  --hue: 0deg;
+  --sat: 1;
+  --bright: 1;
+  --contrast: 1;
 
-  useEffect(() => {
-    const starsArray = Array(100)
-      .fill(0)
-      .map((_, i) => ({
-        id: i,
-        top: `${Math.random() * 100}%`,
-        left: `${Math.random() * 100}%`,
-        delay: `${Math.random() * 3}s`,
-      }));
-    setStars(starsArray);
-  }, []);
+  display: grid;
+  place-items: center;
 
-  return (
-    <StarBackground>
-      {stars.map((star) => (
-        <Star
-          key={star.id}
-          $top={star.top}
-          $left={star.left}
-          $delay={star.delay}
-        />
-      ))}
-    </StarBackground>
-  );
-};
+  & > * {
+    filter: hue-rotate(var(--hue)) saturate(var(--sat)) brightness(var(--bright))
+      contrast(var(--contrast));
+  }
 
-/* ---------------- page ---------------- */
+  &[data-skin="classic"] {
+    --hue: 0deg;
+    --sat: 1;
+    --bright: 1;
+    --contrast: 1.02;
+  }
 
-export default function Home() {
-  const uid = useMemo(() => getOrCreateUid(), []);
+  &[data-skin="midnight"] {
+    --hue: 210deg;
+    --sat: 1.25;
+    --bright: 0.92;
+    --contrast: 1.15;
+  }
 
-  const [showThemes, setShowThemes] = useState(false);
-  const [inviteCode, setInviteCode] = useState("");
-  const [isCopied, setIsCopied] = useState(false);
+  &[data-skin="mint"] {
+    --hue: 135deg;
+    --sat: 1.15;
+    --bright: 1.05;
+    --contrast: 1.05;
+  }
 
-  const [myPlayer, setMyPlayer] = useState<Player | null>(null);
-  const [lobbyPlayers, setLobbyPlayers] = useState<Player[]>([]);
+  &[data-skin="sunset"] {
+    --hue: 320deg;
+    --sat: 1.25;
+    --bright: 1.03;
+    --contrast: 1.08;
+  }
 
-  const [isHost, setIsHost] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-
-  const [showSettings, setShowSettings] = useState(false);
-
-  const copyToClipboard = () => {
-    if (!inviteCode) return;
-    navigator.clipboard.writeText(inviteCode);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
-  };
-
-  const setupLobby = useCallback(
-    async (isNewGame = false, codeToJoin?: string) => {
-      // Reuse local player if already created
-      let player = myPlayer;
-      if (!player) {
-        player = {
-          uid,
-          playerId: 0,
-          name: `Player ${Math.floor(100 + Math.random() * 900)}`,
-          avatar: "astronaut",
-          joinedAt: Date.now(),
-        };
-        setMyPlayer(player);
-      }
-
-      if (isNewGame) {
-        const host: Player = { ...player, playerId: 100, joinedAt: Date.now() };
-
-        const characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-        const code = Array.from({ length: 6 }, () =>
-          characters[Math.floor(Math.random() * characters.length)]
-        ).join("");
-
-        await createLobby(code, host);
-
-        setMyPlayer(host);
-        setInviteCode(code);
-        setIsHost(true);
-        return;
-      }
-
-      if (codeToJoin) {
-        const joiner: Player = { ...player, playerId: 0, joinedAt: Date.now() };
-        await joinLobby(codeToJoin, joiner);
-
-        setMyPlayer(joiner);
-        setInviteCode(codeToJoin);
-        setIsHost(false);
-        return;
-      }
-    },
-    [uid, myPlayer]
-  );
-
-  const handleCreateGame = useCallback(async () => {
-    if (isCreating) return;
-    setIsCreating(true);
-    try {
-      await setupLobby(true);
-    } finally {
-      setIsCreating(false);
-    }
-  }, [setupLobby, isCreating]);
-
-  const handleJoinGame = useCallback(
-    async (code: string) => {
-      if (isCreating) return;
-      setIsCreating(true);
-      try {
-        await setupLobby(false, code);
-      } finally {
-        setIsCreating(false);
-      }
-    },
-    [setupLobby, isCreating]
-  );
-
-  useEffect(() => {
-    if (!inviteCode) return;
-    const unsub = listenToLobbyPlayers(inviteCode, setLobbyPlayers);
-    return () => unsub();
-  }, [inviteCode]);
-
-  // ---- dedupe + ordering (prevents duplicate "me") ----
-  const myUid = myPlayer?.uid;
-
-  const mergedPlayers = [...(myPlayer ? [myPlayer] : []), ...lobbyPlayers] as Player[];
-  const uniquePlayers = Array.from(new Map(mergedPlayers.map((p) => [p.uid, p])).values());
-
-  const orderedPlayers = myUid
-    ? [...uniquePlayers.filter((p) => p.uid === myUid), ...uniquePlayers.filter((p) => p.uid !== myUid)]
-    : uniquePlayers;
-
-  return (
-    <>
-      <StarryBackground />
-
-      <PageContainer>
-        <GlowEffect />
-
-        <PlayerContainer>
-          <Bar>
-            <PlayerWrapper>
-              <AstronautAvatar size={100} />
-              <PlayerName>
-                {myPlayer ? `${myPlayer.name} (You)` : "You (not in lobby)"}{" "}
-                {myPlayer?.playerId === 100 ? "👑" : ""}
-              </PlayerName>
-            </PlayerWrapper>
-          </Bar>
-
-          <Bar_2>
-            <VoteBadge>
-              <Image src="/Vote_V.png" alt="Vote V" width={50} height={50} priority />
-            </VoteBadge>
-
-            {/* ✅ This is the button. It does NOT take uid. */}
-            <SettingsButton onClick={() => setShowSettings(true)} aria-label="Open settings">
-              <FaCog />
-            </SettingsButton>
-          </Bar_2>
-        </PlayerContainer>
-
-        <MainContainer>
-          <InviteCode>
-            <CodeLabel>Invite Code</CodeLabel>
-            <CodeDisplay onClick={copyToClipboard} title="Click to copy">
-              {inviteCode || "Not created yet"}
-              {isCopied && (
-                <span style={{ marginLeft: "0.5rem", fontSize: "0.8rem", color: "#4ade80" }}>
-                  Copied!
-                </span>
-              )}
-            </CodeDisplay>
-          </InviteCode>
-
-          <Title>Imposter Game</Title>
-
-          <ViewContainer $isActive={!showThemes}>
-            <Lobby
-              onStartGame={() => setShowThemes(true)}
-              players={orderedPlayers}
-              onJoinGame={handleJoinGame}
-              onCreateGame={handleCreateGame}
-              isHost={isHost}
-            />
-          </ViewContainer>
-
-          <ViewContainer $isActive={showThemes}>
-            <Themes onBack={() => setShowThemes(false)} />
-          </ViewContainer>
-        </MainContainer>
-      </PageContainer>
-
-      {/* ✅ Settings Modal */}
-      {showSettings && (
-        <ModalOverlay onClick={() => setShowSettings(false)}>
-          <ModalCard onClick={(e) => e.stopPropagation()}>
-            <CloseBtn onClick={() => setShowSettings(false)} aria-label="Close settings">
-              <FaTimes />
-            </CloseBtn>
-
-            {/* ✅ This is where uid is used */}
-            <SettingsPanel uid={uid} />
-          </ModalCard>
-        </ModalOverlay>
-      )}
-    </>
-  );
-}
+  &[data-skin="cyber"] {
+    --hue: 260deg;
+    --sat: 1.45;
+    --bright: 0.98;
+    --contrast: 1.25;
+  }
+`;

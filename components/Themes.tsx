@@ -2,24 +2,77 @@
 
 import { useState, useEffect } from 'react';
 import styled, { keyframes } from 'styled-components';
+import { useTheme } from "./ThemeContext";
+import PlayButton from "./PlayButton";
 
-type ThemeCategory = {
-  id: string;
-  name: string;
-  items: string[];
+/* ---------------- DATA: ORDBANK (Lagt til for å fikse build error) ---------------- */
+// Denne må eksporteres slik at page.tsx finner den.
+// Nøklene her matcher knappene i designet under (f.eks. "Forest", "Pizza", "Planets").
+
+export const WORD_DATA: Record<string, string[]> = {
+  // --- Nature ---
+  Forest: ["Tree", "Bear", "Mushroom", "Cabin", "Path", "Wolf", "Owl", "Campfire"],
+  Mountains: ["Snow", "Climbing", "Goat", "Peak", "Skiing", "Yeti", "Cave", "Echo"],
+  Beach: ["Sand", "Ocean", "Sun", "Crab", "Towel", "Surfing", "Shell", "Shark"],
+  Desert: ["Cactus", "Camel", "Sand", "Scorpion", "Oasis", "Pyramid", "Heat", "Lizard"],
+  Jungle: ["Tiger", "Vine", "Monkey", "Rain", "Snake", "Parrot", "Waterfall", "Jaguar"],
+  Arctic: ["Penguin", "Ice", "Polar Bear", "Snow", "Igloo", "Seal", "Cold", "Glacier"],
+
+  // --- Animals (Categories & Featured) ---
+  Animals: ["Lion", "Elephant", "Giraffe", "Zebra", "Monkey", "Tiger", "Kangaroo", "Panda"],
+  Mammals: ["Lion", "Dog", "Cat", "Human", "Whale", "Bat", "Horse", "Mouse"],
+  Birds: ["Eagle", "Penguin", "Parrot", "Owl", "Duck", "Chicken", "Peacock", "Swan"],
+  Reptiles: ["Snake", "Lizard", "Turtle", "Crocodile", "Chameleon", "Gecko", "Iguana", "Cobra"],
+  Amphibians: ["Frog", "Toad", "Salamander", "Newt", "Tadpole", "Axolotl"],
+  Fish: ["Shark", "Goldfish", "Salmon", "Tuna", "Clownfish", "Piranha", "Eel", "Stingray"],
+  Insects: ["Ant", "Bee", "Butterfly", "Spider", "Mosquito", "Beetle", "Fly", "Worm"],
+
+  // --- Food ---
+  Fruits: ["Apple", "Banana", "Orange", "Grape", "Strawberry", "Watermelon", "Lemon", "Cherry"],
+  Vegetables: ["Carrot", "Potato", "Broccoli", "Corn", "Onion", "Tomato", "Spinach", "Pepper"],
+  Desserts: ["Cake", "Ice Cream", "Chocolate", "Cookie", "Donut", "Pie", "Brownie", "Pudding"],
+  Beverages: ["Water", "Coffee", "Tea", "Soda", "Juice", "Milk", "Beer", "Wine"],
+  Snacks: ["Chips", "Popcorn", "Nuts", "Pretzel", "Candy", "Cracker", "Cheese", "Jerky"],
+  Meals: ["Pizza", "Burger", "Pasta", "Sushi", "Steak", "Taco", "Soup", "Salad"],
+
+  // --- Careers ---
+  Doctor: ["Hospital", "Stethoscope", "Medicine", "Nurse", "Surgery", "Patient", "White Coat"],
+  Engineer: ["Blueprint", "Bridge", "Math", "Helmet", "Computer", "Build", "Machine"],
+  Teacher: ["School", "Chalkboard", "Student", "Book", "Homework", "Classroom", "Apple"],
+  Artist: ["Paint", "Brush", "Canvas", "Color", "Gallery", "Sculpture", "Sketch"],
+  Scientist: ["Lab", "Experiment", "Chemical", "Microscope", "Coat", "Discovery", "Formula"],
+  Chef: ["Kitchen", "Knife", "Hat", "Cooking", "Restaurant", "Recipe", "Oven", "Taste"],
+
+  // --- Technology ---
+  Gadgets: ["Phone", "Watch", "Tablet", "Camera", "Headphones", "Drone", "Laptop"],
+  AI: ["Robot", "Code", "Future", "Smart", "Computer", "Data", "Brain"],
+  Programming: ["Code", "Bug", "Laptop", "Coffee", "Keyboard", "Screen", "Developer"],
+  Robotics: ["Metal", "Battery", "Wire", "Motor", "Sensor", "Cyborg", "Factory"],
+  "Space Tech": ["Rocket", "Satellite", "Rover", "Station", "Telescope", "Suit", "Launch"],
+  "VR/AR": ["Goggles", "Virtual", "Game", "3D", "Headset", "Reality", "Motion"],
+
+  // --- Sports ---
+  Soccer: ["Ball", "Goal", "Grass", "Referee", "Team", "Kick", "World Cup"],
+  Basketball: ["Hoop", "Court", "Dunk", "Net", "Jersey", "NBA", "Dribble"],
+  Tennis: ["Racket", "Net", "Ball", "Court", "Serve", "Wimbledon", "Love"],
+  Swimming: ["Pool", "Water", "Goggles", "Race", "Dive", "Swimsuit", "Stroke"],
+  Athletics: ["Run", "Jump", "Track", "Gold", "Sprint", "Hurdle", "Relay"],
+  Cycling: ["Bike", "Helmet", "Road", "Tour", "Wheel", "Pedal", "Race"],
+
+  // --- Featured / Misc ---
+  Planets: ["Mars", "Venus", "Jupiter", "Saturn", "Earth", "Neptune", "Mercury", "Uranus"],
+  Movies: ["Popcorn", "Cinema", "Actor", "Screen", "Ticket", "Hollywood", "Director", "Oscar"],
+  "Video Games": ["Controller", "Console", "Level", "Boss", "Score", "Player", "Online"],
+  Landscapes: ["Mountain", "River", "Valley", "Ocean", "Desert", "Forest", "City"],
 };
 
-// Styled Components
-
+/* ---------------- Styled Components ---------------- */
 
 const gradientFlow = keyframes`
   0% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
   100% { background-position: 0% 50%; }
 `;
-
-
-
 
 const GlowingBorder = styled.div`
   position: relative;
@@ -45,7 +98,7 @@ const BackButton = styled.button`
   gap: 0.5rem;
   margin-bottom: 1.5rem;
   transition: background-color 0.2s;
-  
+   
   &:hover {
     background: #4b5563;
   }
@@ -61,6 +114,7 @@ const ThemesContainer = styled.div`
   box-shadow: 0 2px 20px 2px #737884;
   position: relative;
   z-index: 1;
+  padding-bottom: 6rem;
 `;
 
 const ThemesHeader = styled.h2`
@@ -131,11 +185,11 @@ const CategoriesRow = styled.div`
   gap: 1rem;
   margin-bottom: 1.5rem;
   padding-bottom: 0.5rem;
-  
+   
   @media (max-width: 768px) {
     gap: 0.75rem;
   }
-  
+   
   @media (max-width: 480px) {
     flex-direction: column;
     gap: 0.5rem;
@@ -151,11 +205,11 @@ const CategoryCard = styled.div<{ $isExpanded: boolean }>`
   z-index: ${({ $isExpanded }) => $isExpanded ? '10' : '1'};
   flex: 1 1 200px;
   min-width: 0;
-  
+   
   @media (max-width: 768px) {
     flex: 1 1 calc(50% - 0.5rem);
   }
-  
+   
   @media (max-width: 480px) {
     flex: 1 1 100%;
   }
@@ -181,7 +235,6 @@ const CategoryHeader = styled.button<{ $isExpanded: boolean }>`
 `;
 
 const CategoryContent = styled.div`
-  
   top: 100%;
   left: 0;
   right: 0;
@@ -236,47 +289,75 @@ const ThemeButton = styled.button<{ $isSelected: boolean }>`
   transition: all 0.3s ease;
   backdrop-filter: blur(5px);
 
-&:hover {
-transform: translateY(-2px);
-box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  }
 
-&:hover {
-background: ${({ $isSelected }) => $isSelected ? '#2563eb' : '#374151'};
-}
+  &:hover {
+    background: ${({ $isSelected }) => $isSelected ? '#2563eb' : '#374151'};
+  }
 
-position: relative;
-overflow: hidden;
+  position: relative;
+  overflow: hidden;
 `;
 
 const Checkbox = styled.span<{ $isSelected: boolean }>`
-width: 1rem;
-height: 1rem;
-border-radius: 0.25rem;
-border: 1px solid ${({ $isSelected }) => $isSelected ? '#3b82f6' : '#6b7280'};
-background: ${({ $isSelected }) => $isSelected ? '#3b82f6' : 'transparent'};
-display: flex;
-align-items: center;
-justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  border: 1px solid ${({ $isSelected }) => $isSelected ? '#3b82f6' : '#6b7280'};
+  background: ${({ $isSelected }) => $isSelected ? '#3b82f6' : 'transparent'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
-svg {
-width: 0.75rem;
-height: 0.75rem;
-color: white;
-opacity: ${({ $isSelected }) => $isSelected ? 1 : 0};
-transition: opacity 0.2s;
-}
+  svg {
+    width: 0.75rem;
+    height: 0.75rem;
+    color: white;
+    opacity: ${({ $isSelected }) => $isSelected ? 1 : 0};
+    transition: opacity 0.2s;
+  }
 `;
 
+const Footer = styled.div`
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 1rem;
+  background: rgba(31, 41, 55, 0.95);
+  border-top: 1px solid rgba(255,255,255,0.1);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 0 0 0.7rem 0.7rem;
+`;
+
+const WaitingText = styled.div`
+  color: #94a3b8;
+  font-style: italic;
+  font-size: 0.9rem;
+  animation: pulse 2s infinite;
+  @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+`;
+
+/* ---------------- Component ---------------- */
 
 interface ThemesProps {
   onBack: () => void;
+  onStartGame: () => void;
+  isHost: boolean;
+  canStartGame: boolean;
 }
 
-export default function Themes({ onBack }: ThemesProps) {
-  const [selectedThemes, setSelectedThemes] = useState<Set<string>>(new Set());
+export default function Themes({ onBack, onStartGame, isHost, canStartGame }: ThemesProps) {
+  // ✅ Henter selectedThemes fra context slik at page.tsx får tilgang til valgene
+  const { selectedThemes, toggleTheme: toggleCtxTheme } = useTheme();
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
+  // Definerer kategoriene for UI-et
   const themeCategories = [
     {
       id: 'nature',
@@ -308,17 +389,8 @@ export default function Themes({ onBack }: ThemesProps) {
       name: 'Sports',
       items: ['Soccer', 'Basketball', 'Tennis', 'Swimming', 'Athletics', 'Cycling']
     },
-    {
-      id: 'roar',
-      name: 'roar',
-      items: ['Soccer', 'Basketball', 'Tennis', 'Swimming', 'Athletics', 'Cycling']
-    },
-    {
-      id: 'point',
-      name: 'point',
-      items: ['Soccer', 'Basketball', 'Tennis', 'Swimming', 'Athletics', 'Cycling']
-    }
   ];
+
   const featuredThemes = [
     'Animals',
     'Planets',
@@ -333,84 +405,43 @@ export default function Themes({ onBack }: ThemesProps) {
       if (newSet.has(categoryId)) {
         newSet.delete(categoryId);
       } else {
-        // Close all other categories first
         setExpandedCategories(new Set([categoryId]));
       }
       return newSet;
     });
   };
 
-  // State for managing glare effects
   const [glareStates, setGlareStates] = useState<Record<string, boolean>>({});
+  const [delays, setDelays] = useState<number[]>([]);
 
-  // Start random glare effects
   useEffect(() => {
     const featuredThemeIds = featuredThemes.map((_, index) => `featured-${index}`);
-
     const startRandomGlare = () => {
       const randomThemeId = featuredThemeIds[Math.floor(Math.random() * featuredThemeIds.length)];
-      const delay = Math.random() * 8000 + 2000; // 2-10 seconds
-
+      const delay = Math.random() * 8000 + 2000;
       setTimeout(() => {
-        setGlareStates(prev => ({
-          ...prev,
-          [randomThemeId]: !prev[randomThemeId] // Toggle to trigger animation
-        }));
-
-        // Reset after animation
+        setGlareStates(prev => ({ ...prev, [randomThemeId]: !prev[randomThemeId] }));
         setTimeout(() => {
-          setGlareStates(prev => ({
-            ...prev,
-            [randomThemeId]: !prev[randomThemeId]
-          }));
+          setGlareStates(prev => ({ ...prev, [randomThemeId]: !prev[randomThemeId] }));
         }, 1000);
-
-        startRandomGlare(); // Start next glare
+        startRandomGlare();
       }, delay);
     };
-
     startRandomGlare();
-
-    return () => {
-      // Cleanup
-    };
+    return () => {};
   }, []);
 
-  const [delays, setDelays] = useState<number[]>([]);
-    useEffect(() => {
-      // Generate random delays on client side only
-      setDelays(Array(4).fill(0).map(() => Math.random() * 1000));
-    }, []);
+  useEffect(() => {
+    setDelays(Array(4).fill(0).map(() => Math.random() * 1000));
+  }, []);
 
-  const toggleTheme = (theme: string, categoryItems: string[]) => {
-    setSelectedThemes(prev => {
-      const newThemes = new Set(prev);
-
-      if (theme.startsWith('All ')) {
-        const allSelected = categoryItems.every(item =>
-          item === theme || newThemes.has(item)
-        );
-
-        if (allSelected) {
-          categoryItems.forEach(item => newThemes.delete(item));
-        } else {
-          categoryItems.forEach(item => newThemes.add(item));
-        }
-      } else {
-        if (newThemes.has(theme)) {
-          newThemes.delete(theme);
-        } else {
-          newThemes.add(theme);
-        }
-      }
-
-      return newThemes;
-    });
+  const handleToggle = (theme: string) => {
+    if(!isHost) return;
+    toggleCtxTheme(theme);
   };
 
   return (
     <>
-
       <ThemesContainer>
         <BackButton onClick={onBack}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -427,7 +458,8 @@ export default function Themes({ onBack }: ThemesProps) {
                 <ThemeButton
                   key={theme}
                   $isSelected={selectedThemes.has(theme)}
-                  onClick={() => toggleTheme(theme, [theme])}
+                  onClick={() => handleToggle(theme)}
+                  style={{ opacity: isHost ? 1 : 0.7, cursor: isHost ? 'pointer' : 'default' }}
                 >
                   <GlareEffect 
                     $show={glareStates[`featured-${index}`] || false}
@@ -447,7 +479,6 @@ export default function Themes({ onBack }: ThemesProps) {
         <CategoriesRow>
           {themeCategories.map(category => {
             const isExpanded = expandedCategories.has(category.id);
-
             return (
               <CategoryCard key={category.id} $isExpanded={isExpanded}>
                 <CategoryHeader onClick={() => toggleCategory(category.id)} $isExpanded={isExpanded}>
@@ -471,12 +502,12 @@ export default function Themes({ onBack }: ThemesProps) {
                   <CategoryContent>
                     {category.items.map(item => {
                       const isSelected = selectedThemes.has(item);
-
                       return (
                         <ThemeButton
                           key={item}
                           $isSelected={isSelected}
-                          onClick={() => toggleTheme(item, category.items)}
+                          onClick={() => handleToggle(item)}
+                          style={{ opacity: isHost ? 1 : 0.7, cursor: isHost ? 'pointer' : 'default' }}
                         >
                           <Checkbox $isSelected={isSelected}>
                             <svg viewBox="0 0 10 8" fill="none" stroke="currentColor">
@@ -494,13 +525,17 @@ export default function Themes({ onBack }: ThemesProps) {
           })}
         </CategoriesRow>
 
-        <input
-          type="hidden"
-          name="selectedThemes"
-          value={Array.from(selectedThemes).join(',')}
-        />
+        <Footer>
+            {!isHost ? (
+                <WaitingText>Waiting for host to choose themes...</WaitingText>
+            ) : (
+                <PlayButton 
+                    onClick={onStartGame} 
+                    disabled={!canStartGame} 
+                />
+            )}
+        </Footer>
       </ThemesContainer>
-
     </>
   );
 }

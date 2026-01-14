@@ -1,46 +1,32 @@
-// components/ThemeContext.tsx
 "use client";
 
-import { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState } from "react";
 
-interface ThemeContextType {
+type ThemeContextType = {
   selectedThemes: Set<string>;
-  toggleTheme: (theme: string, categoryItems: string[]) => void;
-}
+  toggleTheme: (themeId: string) => void;
+  clearThemes: () => void;
+};
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [selectedThemes, setSelectedThemes] = useState<Set<string>>(new Set());
 
-  const toggleTheme = (theme: string, categoryItems: string[]) => {
-    setSelectedThemes(prev => {
-      const newThemes = new Set(prev);
-      
-      if (theme.startsWith('All ')) {
-        const allSelected = categoryItems.every(item => 
-          item === theme || newThemes.has(item)
-        );
-        
-        if (allSelected) {
-          categoryItems.forEach(item => newThemes.delete(item));
-        } else {
-          categoryItems.forEach(item => newThemes.add(item));
-        }
-      } else {
-        if (newThemes.has(theme)) {
-          newThemes.delete(theme);
-        } else {
-          newThemes.add(theme);
-        }
-      }
-      
-      return newThemes;
-    });
+  const toggleTheme = (themeId: string) => {
+    const next = new Set(selectedThemes);
+    if (next.has(themeId)) {
+      next.delete(themeId);
+    } else {
+      next.add(themeId);
+    }
+    setSelectedThemes(next);
   };
 
+  const clearThemes = () => setSelectedThemes(new Set());
+
   return (
-    <ThemeContext.Provider value={{ selectedThemes, toggleTheme }}>
+    <ThemeContext.Provider value={{ selectedThemes, toggleTheme, clearThemes }}>
       {children}
     </ThemeContext.Provider>
   );
@@ -48,8 +34,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
 export function useTheme() {
   const context = useContext(ThemeContext);
-  if (context === undefined) {
-    throw new Error('useTheme must be used within a ThemeProvider');
+  if (!context) {
+    throw new Error("useTheme must be used within a ThemeProvider");
   }
   return context;
 }

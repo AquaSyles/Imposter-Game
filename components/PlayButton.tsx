@@ -10,6 +10,12 @@ const pulse = keyframes`
   100% { transform: scale(1); }
 `;
 
+const shake = keyframes`
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+`;
+
 const PlayButtonContainer = styled.button<{ $error?: boolean }>`
   position: relative;
   display: flex;
@@ -18,12 +24,13 @@ const PlayButtonContainer = styled.button<{ $error?: boolean }>`
   padding: 0 28px 0 32px;
   border: none;
   border-radius: 28px;
-  background: ${props => props.$error ? '#ef4444' : '#3b82f6'};
+  background: ${({ $error }: { $error?: boolean }) => ($error ? '#ef4444' : '#3b82f6')};
   color: white;
   font-size: 20px;
   font-weight: 600;
   cursor: pointer;
   overflow: hidden;
+
   transition: all 0.3s ease;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   
@@ -37,16 +44,26 @@ const PlayButtonContainer = styled.button<{ $error?: boolean }>`
     transform: translateY(0);
   }
 
-  ${props => props.$error && css`
-    animation: shake 0.5s ease-in-out;
-    background: #ef4444;
-  `}
-
-  @keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-5px); }
-    75% { transform: translateX(5px); }
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    animation: none;
+    transform: none;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   }
+
+  &:disabled:hover {
+    transform: none;
+    animation: none;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+
+  ${({ $error }: { $error?: boolean }) =>
+    $error &&
+    css`
+      animation: shake 0.5s ease-in-out;
+      background: #ef4444;
+    `}
 `;
 
 const ButtonText = styled.span`
@@ -68,7 +85,7 @@ const IconContainer = styled.span<{ $isHovered: boolean }>`
 
   svg {
     transition: transform 0.3s ease;
-    ${props => props.$isHovered && 'transform: rotate(90deg);'}
+    ${({ $isHovered }: { $isHovered: boolean }) => $isHovered && 'transform: rotate(90deg);'}
   }
 `;
 
@@ -76,12 +93,14 @@ interface PlayButtonProps {
   type?: 'button' | 'submit' | 'reset';
   error?: boolean;
   onClick?: () => void;
+  disabled?: boolean;
 }
 
 const PlayButton = ({ 
   type = 'submit', 
   error = false, 
-  onClick 
+  onClick,
+  disabled = false,
 }: PlayButtonProps) => {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -90,6 +109,7 @@ const PlayButton = ({
       type={type}
       $error={error}
       onClick={onClick}
+      disabled={disabled}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >

@@ -2,12 +2,19 @@ import {
   collection,
   doc,
   setDoc,
-  getDoc,
   onSnapshot,
   query,
   orderBy,
   runTransaction,
   serverTimestamp,
+  getDocs,
+} from "firebase/firestore";
+import type {
+  DocumentData,
+  DocumentSnapshot,
+  QueryDocumentSnapshot,
+  QuerySnapshot,
+  Transaction,
 } from "firebase/firestore";
 import { db } from "./config";
 import type { Player } from "@/types/player";
@@ -48,6 +55,72 @@ export async function createLobby(inviteCode: string, host: Player) {
   );
 }
 
+export function listenToLobby(inviteCode: string, callback: (lobby: DocumentData | null) => void) {
+  const lobbyRef = doc(db, "lobbies", inviteCode);
+
+  return onSnapshot(lobbyRef, (snapshot: DocumentSnapshot<DocumentData>) => {
+    if (!snapshot.exists()) {
+      callback(null);
+      return;
+    }
+
+    callback(snapshot.data());
+  });
+}
+
+/* -------- START GAME (UPDATED FOR CATEGORY HINT) -------- */
+
+export async function startGame(inviteCode: string, hostUid: string, word: string, hint: string) {
+  const lobbyRef = doc(db, "lobbies", inviteCode);
+
+  const playersSnap = await getDocs(collection(db, "lobbies", inviteCode, "players"));
+  const playerUids = playersSnap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => d.id);
+  
+  if (playerUids.length < 1) {
+    throw new Error("No players in lobby");
+  }
+
+  // Pick a random imposter
+  const imposterUid = playerUids[Math.floor(Math.random() * playerUids.length)];
+
+  // Assign roles
+  const assignments: Record<string, { role: "imposter" | "word" }> = {};
+  for (const uid of playerUids) {
+    assignments[uid] = { role: uid === imposterUid ? "imposter" : "word" };
+  }
+
+  await runTransaction(db, async (tx: Transaction) => {
+    const lobbySnap = await tx.get(lobbyRef);
+    if (!lobbySnap.exists()) {
+      throw new Error("Lobby does not exist");
+    }
+
+    const lobbyData = lobbySnap.data() as any;
+    if (lobbyData?.hostId && lobbyData.hostId !== hostUid) {
+      throw new Error("Only the host can start the game");
+    }
+
+    if (lobbyData?.status === "started") {
+      return;
+    }
+
+    tx.set(
+      lobbyRef,
+      {
+        status: "started",
+        game: {
+          startedAt: serverTimestamp(),
+          word: word,         // The specific word chosen by frontend
+          imposterUid: imposterUid,
+          imposterHint: hint, // The category name passed from frontend
+          assignments: assignments,
+        },
+      },
+      { merge: true }
+    );
+  });
+}
+
 /* -------- JOIN (SAFE PLAYER ID) -------- */
 
 export async function joinLobby(inviteCode: string, player: Player) {
@@ -55,10 +128,15 @@ export async function joinLobby(inviteCode: string, player: Player) {
   const playerRef = doc(db, "lobbies", inviteCode, "players", player.uid);
 
   // Transaction prevents two users getting same playerId
-  await runTransaction(db, async (tx) => {
+  await runTransaction(db, async (tx: Transaction) => {
     const lobbySnap = await tx.get(lobbyRef);
     if (!lobbySnap.exists()) {
       throw new Error("Lobby does not exist");
+    }
+
+    const lobbyData = lobbySnap.data() as any;
+    if (lobbyData?.status && lobbyData.status !== "waiting") {
+      throw new Error("Game already started");
     }
 
     // If player already exists, do not re-assign id (idempotent)
@@ -76,7 +154,6 @@ export async function joinLobby(inviteCode: string, player: Player) {
       return;
     }
 
-    const lobbyData = lobbySnap.data() as any;
     const next = typeof lobbyData.nextPlayerNumber === "number" ? lobbyData.nextPlayerNumber : 101;
 
     // assign new id
@@ -110,8 +187,8 @@ export async function joinLobby(inviteCode: string, player: Player) {
 export function listenToLobbyPlayers(inviteCode: string, callback: (players: Player[]) => void) {
   const q = query(collection(db, "lobbies", inviteCode, "players"), orderBy("joinedAt", "asc"));
 
-  return onSnapshot(q, (snapshot) => {
-    const players: Player[] = snapshot.docs.map((d) => ({
+  return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
+    const players: Player[] = snapshot.docs.map((d: QueryDocumentSnapshot<DocumentData>) => ({
       uid: d.id,
       ...(d.data() as Omit<Player, "uid">),
     }));

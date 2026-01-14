@@ -28,6 +28,17 @@ function getOrCreateUid() {
   return uid;
 }
 
+type AvatarSkin = "classic" | "midnight" | "mint" | "sunset" | "cyber";
+
+function readSkin(uid: string): AvatarSkin {
+  if (typeof window === "undefined") return "classic";
+  const key = `imposter_skin:${uid}`;
+  const raw = localStorage.getItem(key);
+  const valid = ["classic", "midnight", "mint", "sunset", "cyber"];
+  if (raw && valid.includes(raw)) return raw as AvatarSkin;
+  return "classic";
+}
+
 /* ---------------- types ---------------- */
 
 interface LobbyProps {
@@ -107,8 +118,8 @@ export default function Lobby({
         {players.map((player) => (
           <PlayerCard key={player.uid}>
             {/* ✅ same skin filter look as Settings + page */}
-            <SkinScope data-skin={skin}>
-              <AvatarComponent size={80} />
+            <SkinScope data-skin={player.uid === uid ? skin : "classic"}>
+              <AstronautAvatar size={80} />
             </SkinScope>
 
             <PlayerName className={player.playerId === 100 ? "host" : ""}>

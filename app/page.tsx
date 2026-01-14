@@ -1,6 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import Lobby from "@/components/Lobby";
+import Themes, { WORD_DATA } from "@/components/Themes"; 
+import Game from "@/components/Game";
 import styled from "styled-components";
 import Image from "next/image";
 import { FaCog, FaTimes } from "react-icons/fa";
@@ -13,7 +16,8 @@ import { AstronautAvatar } from "@/components/avatars/AstronautAvatar";
 import { RedAstronautAvatar } from "@/components/avatars/RedAstronautAvatar";
 
 import type { Player } from "@/types/player";
-import { createLobby, joinLobby, listenToLobbyPlayers } from "@/firebase/lobby";
+import { createLobby, joinLobby, listenToLobby, listenToLobbyPlayers, startGame } from "@/firebase/lobby";
+import { useTheme } from "@/components/ThemeContext";
 
 import {
   readSkin,
@@ -72,9 +76,14 @@ const StarryBackground = () => {
 export default function Home() {
   const uid = useMemo(() => getOrCreateUid(), []);
 
+  // Henter valgte temaer fra Context
+  const { selectedThemes } = useTheme();
+
   const [showThemes, setShowThemes] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
   const [isCopied, setIsCopied] = useState(false);
+
+  const [lobby, setLobby] = useState<any | null>(null);
 
   const [myPlayer, setMyPlayer] = useState<Player | null>(null);
   const [lobbyPlayers, setLobbyPlayers] = useState<Player[]>([]);
@@ -182,6 +191,8 @@ export default function Home() {
       setIsCreating(true);
       try {
         await setupLobby(false, code);
+      } catch (err) {
+        console.error(err);
       } finally {
         setIsCreating(false);
       }
@@ -194,6 +205,58 @@ export default function Home() {
     const unsub = listenToLobbyPlayers(inviteCode, setLobbyPlayers);
     return () => unsub();
   }, [inviteCode]);
+
+  useEffect(() => {
+    if (!inviteCode) return;
+    const unsub = listenToLobby(inviteCode, setLobby);
+    return () => unsub();
+  }, [inviteCode]);
+
+  const myUid = myPlayer?.uid;
+  const mergedPlayers = [...(myPlayer ? [myPlayer] : []), ...lobbyPlayers] as Player[];
+  const uniquePlayers = Array.from(new Map(mergedPlayers.map((p) => [p.uid, p])).values());
+  const orderedPlayers = myUid
+    ? [...uniquePlayers.filter((p) => p.uid === myUid), ...uniquePlayers.filter((p) => p.uid !== myUid)]
+    : uniquePlayers;
+
+  const isStarted = lobby?.status === "started";
+
+  // ------------------------------------------------------------------
+  // ✅ LOGIKKEN SOM FIKSER PLAY-KNAPPEN
+  // ------------------------------------------------------------------
+  const handleStartGame = useCallback(async () => {
+    if (!inviteCode) return;
+    if (!myPlayer) return;
+
+    // 1. Hent hvilke kategorier (temaer) brukeren har valgt
+    const categories = Array.from(selectedThemes);
+
+    if (categories.length === 0) {
+      alert("Please select at least one theme!");
+      return;
+    }
+
+    // 2. Velg en tilfeldig kategori (Dette blir HINTET til imposteren)
+    // F.eks: "Forest" eller "Pizza"
+    const randomCategory = categories[Math.floor(Math.random() * categories.length)];
+
+    // 3. Finn ordlisten for denne kategorien
+    const wordsInCategory = WORD_DATA[randomCategory];
+
+    if (!wordsInCategory || wordsInCategory.length === 0) {
+      console.error("Fant ingen ord for kategori:", randomCategory);
+      alert("Something went wrong finding words for " + randomCategory);
+      return;
+    }
+
+    // 4. Velg et tilfeldig ord fra listen (Dette er ordet Crewmates ser)
+    const randomWord = wordsInCategory[Math.floor(Math.random() * wordsInCategory.length)];
+
+    // 5. Start spillet (Sender 4 argumenter: code, uid, word, hint)
+    // Her sender vi 'randomCategory' som hintet.
+    await startGame(inviteCode, myPlayer.uid, randomWord, randomCategory);
+    
+  }, [inviteCode, myPlayer, selectedThemes]);
 
   // ---- dedupe + ordering (prevents duplicate "me") ----
   const myUid = myPlayer?.uid;
@@ -296,7 +359,7 @@ export default function Home() {
   );
 }
 
-/* ---------------- styled ---------------- */
+/* ---------------- styled components ---------------- */
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -334,12 +397,8 @@ const Star = styled.div<{ $top: string; $left: string; $delay: string }>`
 
   @keyframes twinkle {
     0%,
-    100% {
-      opacity: 0.2;
-    }
-    50% {
-      opacity: 1;
-    }
+    100% { opacity: 0.2; }
+    50% { opacity: 1; }
   }
 `;
 
@@ -347,7 +406,7 @@ const Title = styled.h1`
   font-size: 3.5rem;
   font-weight: 700;
   margin-bottom: 2rem;
-  margin-left: 35%;
+  text-align: center;
   background: linear-gradient(45deg, #3b82f6, #8b5cf6);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -372,6 +431,9 @@ const MainContainer = styled.main`
   position: relative;
   z-index: 2;
   overflow: visible;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 `;
 
 const PlayerContainer = styled.div`
@@ -388,6 +450,7 @@ const PlayerContainer = styled.div`
   top: -4px;
   right: -1px;
   padding: 1rem;
+  z-index: 10;
 `;
 
 const Bar = styled.div`
@@ -447,8 +510,7 @@ const SettingsButton = styled.button`
 `;
 
 const InviteCode = styled.div`
-  position: absolute;
-  margin-top: 1rem;
+  margin-bottom: 2rem;
   text-align: center;
   color: #e5e7eb;
 `;
@@ -471,10 +533,6 @@ const CodeDisplay = styled.div`
     background: rgba(79, 70, 229, 0.2);
     transform: translateY(-2px);
   }
-
-  &:active {
-    transform: translateY(0);
-  }
 `;
 
 const CodeLabel = styled.div`
@@ -491,8 +549,6 @@ const ViewContainer = styled.div<{ $isActive: boolean }>`
   pointer-events: ${({ $isActive }) => ($isActive ? "auto" : "none")};
   transform: ${({ $isActive }) => ($isActive ? "translateY(0)" : "translateY(20px)")};
 `;
-
-/* -------- modal -------- */
 
 const ModalOverlay = styled.div`
   position: fixed;

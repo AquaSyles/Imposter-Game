@@ -1,12 +1,21 @@
 "use client";
 
 import styled from "styled-components";
-import { FaPlay, FaUserPlus, FaGamepad, FaArrowRight } from "react-icons/fa";
+import { FaPlay, FaUserPlus, FaGamepad } from "react-icons/fa";
 import { useState, useEffect, useMemo } from "react";
 import type { Player } from "@/types/player";
-import { AstronautAvatar } from "@/components/avatar"; // Bruker standard avatar
 
-/* ---------------- helpers (Inlinet for å unngå import-feil) ---------------- */
+import { AstronautAvatar } from "./avatars/AstronautAvatar";
+import { RedAstronautAvatar } from "./avatars/RedAstronautAvatar";
+
+import {
+  readSkin,
+  readType,
+  type AvatarSkin,
+  type AvatarType,
+} from "@/firebase/avatarPrefs";
+
+/* ---------------- helpers ---------------- */
 
 function getOrCreateUid() {
   if (typeof window === "undefined") return "";
@@ -55,21 +64,31 @@ export default function Lobby({
   const [showJoinForm, setShowJoinForm] = useState(false);
 
   // ✅ prefs
+  const [avatarType, setAvatarType] = useState<AvatarType>("classicAstronaut");
   const [skin, setSkin] = useState<AvatarSkin>("classic");
 
   // init prefs
   useEffect(() => {
     if (!uid) return;
+    setAvatarType(readType(uid));
     setSkin(readSkin(uid));
   }, [uid]);
 
-  // live update listeners
+  // live update when SettingsPanel changes prefs
   useEffect(() => {
     if (!uid) return;
-    const onStorage = () => setSkin(readSkin(uid));
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+
+    const onPrefs = () => {
+      setAvatarType(readType(uid));
+      setSkin(readSkin(uid));
+    };
+
+    window.addEventListener("imposter:avatarPrefs", onPrefs);
+    return () => window.removeEventListener("imposter:avatarPrefs", onPrefs);
   }, [uid]);
+
+  const AvatarComponent =
+    avatarType === "redAstronaut" ? RedAstronautAvatar : AstronautAvatar;
 
   const handleJoinGame = () => {
     if (inviteCode.trim() && onJoinGame) {

@@ -2,72 +2,85 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import styled, { css } from "styled-components";
-import { AstronautAvatar } from "@/components/avatar"; // <- din avatar-komponent
+import { AstronautAvatar } from "@/components/avatars/AstronautAvatar";
+import { RedAstronautAvatar } from "@/components/avatars/RedAstronautAvatar";
 
-/* ---------------- types ---------------- */
+// ✅ BRUK KUN disse (ikke redefiner lokalt)
+import {
+  readSkin,
+  readType,
+  writeSkin,
+  writeType,
+  type AvatarSkin,
+  type AvatarType,
+} from "@/firebase/avatarPrefs";
 
-type AvatarSkin = "classic" | "midnight" | "mint" | "sunset" | "cyber";
+/* ---------------- props ---------------- */
 
 type SettingsPanelProps = {
-  /** Stable user id (use your getOrCreateUid()) */
   uid: string;
-  /** Current skin (optional, will load from storage if not provided) */
   initialSkin?: AvatarSkin;
-  /** Called when user changes skin */
+  initialAvatarType?: AvatarType;
   onSkinChange?: (skin: AvatarSkin) => void;
+  onAvatarTypeChange?: (type: AvatarType) => void;
 };
-
-/* ---------------- storage helpers ---------------- */
-
-function storageKey(uid: string) {
-  return `imposter_skin:${uid}`;
-}
-
-function readSkin(uid: string): AvatarSkin {
-  if (typeof window === "undefined") return "classic";
-  const raw = localStorage.getItem(storageKey(uid));
-  const valid = ["classic", "midnight", "mint", "sunset", "cyber"] as const;
-  if (raw && (valid as readonly string[]).includes(raw)) return raw as AvatarSkin;
-  return "classic";
-}
-
-function writeSkin(uid: string, skin: AvatarSkin) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(storageKey(uid), skin);
-}
 
 /* ---------------- component ---------------- */
 
 export default function SettingsPanel({
   uid,
   initialSkin,
+  initialAvatarType,
   onSkinChange,
+  onAvatarTypeChange,
 }: SettingsPanelProps) {
   const [skin, setSkin] = useState<AvatarSkin>("classic");
+  const [avatarType, setAvatarType] = useState<AvatarType>("classicAstronaut");
 
   useEffect(() => {
-    // load saved skin (per user)
-    const saved = initialSkin ?? readSkin(uid);
-    setSkin(saved);
-  }, [uid, initialSkin]);
+    setSkin(initialSkin ?? readSkin(uid));
+    setAvatarType(initialAvatarType ?? readType(uid));
+  }, [uid, initialSkin, initialAvatarType]);
 
   const selectSkin = useCallback(
     (next: AvatarSkin) => {
       setSkin(next);
       writeSkin(uid, next);
       onSkinChange?.(next);
+
+      // 🔥 notify the app
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("imposter:avatarPrefs"));
+      }
     },
     [uid, onSkinChange]
   );
 
-  // Big preview size for details
-  const previewSize = 180;
+  const selectAvatarType = useCallback(
+    (next: AvatarType) => {
+      setAvatarType(next);
+      writeType(uid, next);
+      onAvatarTypeChange?.(next);
+
+      // 🔥 notify the app
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("imposter:avatarPrefs"));
+      }
+    },
+    [uid, onAvatarTypeChange]
+  );
+
+  const previewSize = 200;
+
+  const PreviewAvatar = useMemo(() => {
+    return avatarType === "redAstronaut" ? RedAstronautAvatar : AstronautAvatar;
+  }, [avatarType]);
 
   return (
     <Wrap>
       <Header>
         <Title>Settings</Title>
-        <Subtitle>Customize your avatar. This is saved per user id.</Subtitle>
+        <Subtitle>Pick your avatar + skin. Saved per uid.</Subtitle>
       </Header>
 
       <Grid>
@@ -76,7 +89,7 @@ export default function SettingsPanel({
           <PreviewRow>
             <BigAvatarFrame>
               <SkinScope data-skin={skin}>
-                <AstronautAvatar size={previewSize} />
+                <PreviewAvatar size={previewSize} />
               </SkinScope>
             </BigAvatarFrame>
 
@@ -86,18 +99,57 @@ export default function SettingsPanel({
                 <Value title={uid}>{uid}</Value>
               </InfoLine>
               <InfoLine>
+                <Label>Avatar</Label>
+                <Value>{avatarType}</Value>
+              </InfoLine>
+              <InfoLine>
                 <Label>Skin</Label>
                 <Value>{skin}</Value>
               </InfoLine>
-              <Hint>
-                Tip: the preview is intentionally large so you can see details.
-              </Hint>
+              <Hint>Preview is large so you can see details.</Hint>
             </MiniInfo>
           </PreviewRow>
         </Card>
 
         <Card>
-          <CardTitle>Skins</CardTitle>
+          <CardTitle>Choose Avatar</CardTitle>
+          <ChoiceGrid>
+            <ChoiceButton
+              type="button"
+              $active={avatarType === "classicAstronaut"}
+              onClick={() => selectAvatarType("classicAstronaut")}
+            >
+              <ChoiceThumb>
+                <SkinScope data-skin={skin}>
+                  <AstronautAvatar size={84} />
+                </SkinScope>
+              </ChoiceThumb>
+              <ChoiceMeta>
+                <ChoiceName>Classic Astronaut</ChoiceName>
+                <ChoiceDesc>Your original avatar.</ChoiceDesc>
+              </ChoiceMeta>
+            </ChoiceButton>
+
+            <ChoiceButton
+              type="button"
+              $active={avatarType === "redAstronaut"}
+              onClick={() => selectAvatarType("redAstronaut")}
+            >
+              <ChoiceThumb>
+                <SkinScope data-skin={skin}>
+                  <RedAstronautAvatar size={84} />
+                </SkinScope>
+              </ChoiceThumb>
+              <ChoiceMeta>
+                <ChoiceName>Red Astronaut</ChoiceName>
+                <ChoiceDesc>Backpack + red details.</ChoiceDesc>
+              </ChoiceMeta>
+            </ChoiceButton>
+          </ChoiceGrid>
+
+          <Divider />
+
+          <CardTitle>Skins (filter-based for now)</CardTitle>
           <SkinGrid>
             {SKINS.map((s) => (
               <SkinButton
@@ -108,7 +160,7 @@ export default function SettingsPanel({
               >
                 <SkinThumb>
                   <SkinScope data-skin={s.id}>
-                    <AstronautAvatar size={72} />
+                    <PreviewAvatar size={72} />
                   </SkinScope>
                 </SkinThumb>
                 <SkinMeta>
@@ -124,18 +176,14 @@ export default function SettingsPanel({
   );
 }
 
-/* ---------------- skins (design tokens) ----------------
-   IMPORTANT:
-   These skins work by applying CSS variables + a few filters
-   around your existing AstronautAvatar (no changes needed inside avatar).
-*/
+/* ---------------- skins list ---------------- */
 
 const SKINS: Array<{ id: AvatarSkin; name: string; desc: string }> = [
-  { id: "classic", name: "Classic", desc: "Original white suit, crisp look." },
-  { id: "midnight", name: "Midnight", desc: "Dark suit + neon-ish glow." },
-  { id: "mint", name: "Mint", desc: "Fresh mint tones, soft contrast." },
-  { id: "sunset", name: "Sunset", desc: "Warm highlights, orange/pink vibe." },
-  { id: "cyber", name: "Cyber", desc: "High-contrast futuristic palette." },
+  { id: "classic", name: "Classic", desc: "Original look." },
+  { id: "midnight", name: "Midnight", desc: "Darker + neon-ish." },
+  { id: "mint", name: "Mint", desc: "Fresh mint tones." },
+  { id: "sunset", name: "Sunset", desc: "Warm highlights." },
+  { id: "cyber", name: "Cyber", desc: "High-contrast vibe." },
 ];
 
 /* ---------------- styled ---------------- */
@@ -192,6 +240,12 @@ const CardTitle = styled.div`
   margin-bottom: 0.75rem;
 `;
 
+const Divider = styled.div`
+  height: 1px;
+  margin: 1rem 0;
+  background: rgba(255, 255, 255, 0.08);
+`;
+
 const PreviewRow = styled.div`
   display: grid;
   grid-template-columns: 260px 1fr;
@@ -242,8 +296,8 @@ const Label = styled.div`
 
 const Value = styled.div`
   color: #e2e8f0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-    monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
   font-size: 0.9rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -255,7 +309,68 @@ const Hint = styled.div`
   font-size: 0.9rem;
 `;
 
-/* ---- skin list ---- */
+/* ---- avatar type choices ---- */
+
+const ChoiceGrid = styled.div`
+  display: grid;
+  gap: 0.75rem;
+`;
+
+const ChoiceButton = styled.button<{ $active?: boolean }>`
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(30, 41, 59, 0.55);
+  border-radius: 12px;
+  padding: 0.75rem;
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 0.75rem;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    border-color: rgba(99, 102, 241, 0.45);
+    background: rgba(30, 41, 59, 0.75);
+  }
+
+  ${({ $active }) =>
+    $active &&
+    css`
+      border-color: rgba(99, 102, 241, 0.9);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+    `}
+`;
+
+const ChoiceThumb = styled.div`
+  width: 96px;
+  height: 78px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.35);
+  overflow: hidden;
+`;
+
+const ChoiceMeta = styled.div`
+  display: grid;
+  gap: 0.25rem;
+  align-content: center;
+`;
+
+const ChoiceName = styled.div`
+  font-weight: 700;
+  color: #e2e8f0;
+`;
+
+const ChoiceDesc = styled.div`
+  color: #94a3b8;
+  font-size: 0.9rem;
+  line-height: 1.25rem;
+`;
+
+/* ---- skins list ---- */
 
 const SkinGrid = styled.div`
   display: grid;
@@ -316,31 +431,22 @@ const SkinDesc = styled.div`
   line-height: 1.25rem;
 `;
 
-/* ---------------- SkinScope ----------------
-   This wraps the avatar and tweaks look using CSS variables + filters.
-   Your avatar currently hardcodes colors inside, but it DOES have:
-   - Wrap background + border/glow we can tint via filters
-   - Inner suit/head are mostly white; we can "skin" via filter + hue-rotate
-   For deeper customization later, we can refactor AstronautAvatar to accept CSS vars.
-*/
+/* ---------------- SkinScope ---------------- */
 
 const SkinScope = styled.div`
-  /* Defaults */
   --hue: 0deg;
   --sat: 1;
   --bright: 1;
   --contrast: 1;
-  --glow: rgba(99, 102, 241, 0.55);
 
   display: grid;
   place-items: center;
 
-  /* Apply filter to the whole avatar */
   & > * {
-    filter: hue-rotate(var(--hue)) saturate(var(--sat)) brightness(var(--bright)) contrast(var(--contrast));
+    filter: hue-rotate(var(--hue)) saturate(var(--sat)) brightness(var(--bright))
+      contrast(var(--contrast));
   }
 
-  /* Skin presets */
   &[data-skin="classic"] {
     --hue: 0deg;
     --sat: 1;

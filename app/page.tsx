@@ -5,13 +5,26 @@ import Lobby from "@/components/Lobby";
 import Themes, { WORD_DATA } from "@/components/Themes"; 
 import Game from "@/components/Game";
 import styled from "styled-components";
-import { FaCog, FaTimes } from "react-icons/fa";
-import { AstronautAvatar } from "@/components/avatar";
-import SettingsPanel from "@/components/settings";
 import Image from "next/image";
+import { FaCog, FaTimes } from "react-icons/fa";
+
+import Lobby from "@/components/Lobby";
+import Themes from "@/components/Themes";
+import SettingsPanel from "@/components/settings";
+
+import { AstronautAvatar } from "@/components/avatars/AstronautAvatar";
+import { RedAstronautAvatar } from "@/components/avatars/RedAstronautAvatar";
+
 import type { Player } from "@/types/player";
 import { createLobby, joinLobby, listenToLobby, listenToLobbyPlayers, startGame } from "@/firebase/lobby";
 import { useTheme } from "@/components/ThemeContext";
+
+import {
+  readSkin,
+  readType,
+  type AvatarSkin,
+  type AvatarType,
+} from "@/firebase/avatarPrefs";
 
 /* ---------------- helpers ---------------- */
 
@@ -24,6 +37,39 @@ function getOrCreateUid() {
   localStorage.setItem(key, uid);
   return uid;
 }
+
+/* ---------------- background component ---------------- */
+
+const StarryBackground = () => {
+  const [stars, setStars] = useState<
+    Array<{ id: number; top: string; left: string; delay: string }>
+  >([]);
+
+  useEffect(() => {
+    const starsArray = Array(100)
+      .fill(0)
+      .map((_, i) => ({
+        id: i,
+        top: `${Math.random() * 100}%`,
+        left: `${Math.random() * 100}%`,
+        delay: `${Math.random() * 3}s`,
+      }));
+    setStars(starsArray);
+  }, []);
+
+  return (
+    <StarBackground>
+      {stars.map((star) => (
+        <Star
+          key={star.id}
+          $top={star.top}
+          $left={star.left}
+          $delay={star.delay}
+        />
+      ))}
+    </StarBackground>
+  );
+};
 
 /* ---------------- page ---------------- */
 
@@ -46,6 +92,38 @@ export default function Home() {
   const [isCreating, setIsCreating] = useState(false);
 
   const [showSettings, setShowSettings] = useState(false);
+
+  // ✅ prefs (type + skin)
+  const [avatarType, setAvatarType] = useState<AvatarType>("classicAstronaut");
+  const [skin, setSkin] = useState<AvatarSkin>("classic");
+
+  // ✅ init prefs
+  useEffect(() => {
+    setAvatarType(readType(uid));
+    setSkin(readSkin(uid));
+  }, [uid]);
+
+  // ✅ live-update when SettingsPanel changes prefs
+  useEffect(() => {
+    const onPrefs = () => {
+      setAvatarType(readType(uid));
+      setSkin(readSkin(uid));
+    };
+
+    window.addEventListener("imposter:avatarPrefs", onPrefs);
+    return () => window.removeEventListener("imposter:avatarPrefs", onPrefs);
+  }, [uid]);
+
+  const handleAvatarTypeChange = useCallback((newType: AvatarType) => {
+    setAvatarType(newType);
+  }, []);
+
+  const handleSkinChange = useCallback((newSkin: AvatarSkin) => {
+    setSkin(newSkin);
+  }, []);
+
+  const AvatarComponent =
+    avatarType === "redAstronaut" ? RedAstronautAvatar : AstronautAvatar;
 
   const copyToClipboard = () => {
     if (!inviteCode) return;
@@ -70,6 +148,7 @@ export default function Home() {
 
       if (isNewGame) {
         const host: Player = { ...player, playerId: 100, joinedAt: Date.now() };
+
         const characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
         const code = Array.from({ length: 6 }, () =>
           characters[Math.floor(Math.random() * characters.length)]
@@ -179,6 +258,18 @@ export default function Home() {
     
   }, [inviteCode, myPlayer, selectedThemes]);
 
+  // ---- dedupe + ordering (prevents duplicate "me") ----
+  const myUid = myPlayer?.uid;
+  const mergedPlayers = [...(myPlayer ? [myPlayer] : []), ...lobbyPlayers] as Player[];
+  const uniquePlayers = Array.from(new Map(mergedPlayers.map((p) => [p.uid, p])).values());
+
+  const orderedPlayers = myUid
+    ? [
+        ...uniquePlayers.filter((p) => p.uid === myUid),
+        ...uniquePlayers.filter((p) => p.uid !== myUid),
+      ]
+    : uniquePlayers;
+
   return (
     <>
       <StarryBackground />
@@ -186,10 +277,14 @@ export default function Home() {
       <PageContainer>
         <GlowEffect />
 
+        {/* Top-right player container */}
         <PlayerContainer>
           <Bar>
             <PlayerWrapper>
-              <AstronautAvatar size={100} />
+              <SkinScope data-skin={skin}>
+                <AvatarComponent size={100} />
+              </SkinScope>
+
               <PlayerName>
                 {myPlayer ? `${myPlayer.name} (You)` : "You (not in lobby)"}{" "}
                 {myPlayer?.playerId === 100 ? "👑" : ""}
@@ -223,40 +318,40 @@ export default function Home() {
 
           <Title>Imposter Game</Title>
 
-          {isStarted ? (
-            <Game players={orderedPlayers} myUid={uid} game={lobby?.game} />
-          ) : (
-            <>
-              <ViewContainer $isActive={!showThemes}>
-                <Lobby
-                  onStartGame={() => setShowThemes(true)}
-                  players={orderedPlayers}
-                  onJoinGame={handleJoinGame}
-                  onCreateGame={handleCreateGame}
-                  isHost={isHost}
-                />
-              </ViewContainer>
+          <ViewContainer $isActive={!showThemes}>
+            <Lobby
+              onStartGame={() => setShowThemes(true)}
+              players={orderedPlayers}
+              onJoinGame={handleJoinGame}
+              onCreateGame={handleCreateGame}
+              isHost={isHost}
+              // (valgfritt) hvis du vil bruke skin/type inni Lobby også:
+              // avatarType={avatarType}
+              // skin={skin}
+            />
+          </ViewContainer>
 
-              <ViewContainer $isActive={showThemes}>
-                <Themes
-                  onBack={() => setShowThemes(false)}
-                  isHost={isHost}
-                  canStartGame={selectedThemes.size > 0}
-                  onStartGame={handleStartGame}
-                />
-              </ViewContainer>
-            </>
-          )}
+          <ViewContainer $isActive={showThemes}>
+            <Themes onBack={() => setShowThemes(false)} />
+          </ViewContainer>
         </MainContainer>
       </PageContainer>
 
+      {/* Settings Modal */}
       {showSettings && (
         <ModalOverlay onClick={() => setShowSettings(false)}>
-          <ModalCard onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}>
+          <ModalCard onClick={(e) => e.stopPropagation()}>
             <CloseBtn onClick={() => setShowSettings(false)} aria-label="Close settings">
               <FaTimes />
             </CloseBtn>
-            <SettingsPanel uid={uid} />
+
+            <SettingsPanel
+              uid={uid}
+              initialAvatarType={avatarType}
+              initialSkin={skin}
+              onAvatarTypeChange={handleAvatarTypeChange}
+              onSkinChange={handleSkinChange}
+            />
           </ModalCard>
         </ModalOverlay>
       )}
@@ -452,8 +547,7 @@ const ViewContainer = styled.div<{ $isActive: boolean }>`
   position: ${({ $isActive }) => ($isActive ? "relative" : "absolute")};
   opacity: ${({ $isActive }) => ($isActive ? 1 : 0)};
   pointer-events: ${({ $isActive }) => ($isActive ? "auto" : "none")};
-  transform: ${({ $isActive }) =>
-    $isActive ? "translateY(0)" : "translateY(20px)"};
+  transform: ${({ $isActive }) => ($isActive ? "translateY(0)" : "translateY(20px)")};
 `;
 
 const ModalOverlay = styled.div`
@@ -497,35 +591,54 @@ const CloseBtn = styled.button`
   }
 `;
 
-/* ---------------- background logic ---------------- */
+/* ---------------- SkinScope (same as SettingsPanel) ---------------- */
 
-const StarryBackground = () => {
-  const [stars, setStars] = useState<
-    Array<{ id: number; top: string; left: string; delay: string }>
-  >([]);
+const SkinScope = styled.div`
+  --hue: 0deg;
+  --sat: 1;
+  --bright: 1;
+  --contrast: 1;
 
-  useEffect(() => {
-    const starsArray = Array(100)
-      .fill(0)
-      .map((_, i) => ({
-        id: i,
-        top: `${Math.random() * 100}%`,
-        left: `${Math.random() * 100}%`,
-        delay: `${Math.random() * 3}s`,
-      }));
-    setStars(starsArray);
-  }, []);
+  display: grid;
+  place-items: center;
 
-  return (
-    <StarBackground>
-      {stars.map((star) => (
-        <Star
-          key={star.id}
-          $top={star.top}
-          $left={star.left}
-          $delay={star.delay}
-        />
-      ))}
-    </StarBackground>
-  );
-};
+  & > * {
+    filter: hue-rotate(var(--hue)) saturate(var(--sat)) brightness(var(--bright))
+      contrast(var(--contrast));
+  }
+
+  &[data-skin="classic"] {
+    --hue: 0deg;
+    --sat: 1;
+    --bright: 1;
+    --contrast: 1.02;
+  }
+
+  &[data-skin="midnight"] {
+    --hue: 210deg;
+    --sat: 1.25;
+    --bright: 0.92;
+    --contrast: 1.15;
+  }
+
+  &[data-skin="mint"] {
+    --hue: 135deg;
+    --sat: 1.15;
+    --bright: 1.05;
+    --contrast: 1.05;
+  }
+
+  &[data-skin="sunset"] {
+    --hue: 320deg;
+    --sat: 1.25;
+    --bright: 1.03;
+    --contrast: 1.08;
+  }
+
+  &[data-skin="cyber"] {
+    --hue: 260deg;
+    --sat: 1.45;
+    --bright: 0.98;
+    --contrast: 1.25;
+  }
+`;

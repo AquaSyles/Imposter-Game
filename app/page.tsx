@@ -263,7 +263,15 @@ export default function Home() {
 
           {/* ✅ game view */}
           {isStarted ? (
-            <Game players={orderedPlayers} myUid={uid} game={gameData} />
+            <Game
+              inviteCode={inviteCode}
+              players={orderedPlayers}
+              myUid={uid}
+              game={gameData}
+              isHost={isHost}
+              hostUid={myPlayer?.uid ?? ""}
+            />
+
           ) : (
             <>
               <ViewContainer $isActive={!showThemes}>

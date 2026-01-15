@@ -96,17 +96,18 @@ export async function setLobbyTheme(inviteCode: string, hostUid: string, themeId
 export async function startGame(inviteCode: string, hostUid: string, word: string, themeId: string) {
   const lobbyRef = doc(db, "lobbies", inviteCode);
 
-  const playersSnap = await getDocs(collection(db, "lobbies", inviteCode, "players"));
+  // ✅ hent players i deterministisk rekkefølge (joinedAt)
+  const playersQ = query(collection(db, "lobbies", inviteCode, "players"), orderBy("joinedAt", "asc"));
+  const playersSnap = await getDocs(playersQ);
+
   const playerUids = playersSnap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => d.id);
 
-  if (playerUids.length < 1) {
-    throw new Error("No players in lobby");
+  if (playerUids.length < 2) {
+    throw new Error("Need at least 2 players to start");
   }
 
-  // Pick a random imposter
   const imposterUid = playerUids[Math.floor(Math.random() * playerUids.length)];
 
-  // Assign roles
   const assignments: Record<string, { role: "imposter" | "word" }> = {};
   for (const uid of playerUids) {
     assignments[uid] = { role: uid === imposterUid ? "imposter" : "word" };
@@ -114,18 +115,12 @@ export async function startGame(inviteCode: string, hostUid: string, word: strin
 
   await runTransaction(db, async (tx: Transaction) => {
     const lobbySnap = await tx.get(lobbyRef);
-    if (!lobbySnap.exists()) {
-      throw new Error("Lobby does not exist");
-    }
+    if (!lobbySnap.exists()) throw new Error("Lobby does not exist");
 
     const lobbyData = lobbySnap.data() as any;
-    if (lobbyData?.hostId && lobbyData.hostId !== hostUid) {
-      throw new Error("Only the host can start the game");
-    }
 
-    if (lobbyData?.status === "started") {
-      return;
-    }
+    if (lobbyData?.hostId !== hostUid) throw new Error("Only host can start");
+    if (lobbyData?.status === "started") return;
 
     tx.set(
       lobbyRef,
@@ -133,12 +128,26 @@ export async function startGame(inviteCode: string, hostUid: string, word: strin
         status: "started",
         game: {
           startedAt: serverTimestamp(),
-          themeId, // ✅ lagrer temaet vi brukte
-          word,    // ✅ ordet alle crew får
+          themeId,
+          word,
           imposterUid,
-          imposterHint: "Blend in. Do your best.", // kan endres senere
+          imposterHint: "Blend in. Do your best.",
           assignments,
+
+          // ✅ flow
           phase: "reveal",
+
+          // ✅ turn-system
+          playerOrder: playerUids,
+          chat: {
+            round: 1,
+            turnIndex: 0,
+            turnUid: playerUids[0],
+            log: [],
+          },
+
+          votes: {},
+          result: null,
         },
       },
       { merge: true }
@@ -207,6 +216,194 @@ export async function joinLobby(inviteCode: string, player: Player) {
     );
   });
 }
+export async function goToChatPhase(inviteCode: string, hostUid: string) {
+  const lobbyRef = doc(db, "lobbies", inviteCode);
+
+  await runTransaction(db, async (tx: Transaction) => {
+    const snap = await tx.get(lobbyRef);
+    if (!snap.exists()) throw new Error("Lobby does not exist");
+
+    const data = snap.data() as any;
+    if (data.hostId !== hostUid) throw new Error("Only host can change phase");
+
+    if (data?.game?.phase !== "reveal") return;
+
+    tx.set(
+      lobbyRef,
+      { game: { phase: "chat" } },
+      { merge: true }
+    );
+  });
+}
+function normalizeOneWord(input: string) {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  // fjern flere spaces
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length !== 1) return null;
+
+  // valgfritt: fjern rare tegn, behold bokstaver/tall/æøå/-
+  const cleaned = parts[0].replace(/[^\p{L}\p{N}\-ÆØÅæøå]/gu, "");
+  if (!cleaned) return null;
+
+  return cleaned;
+}
+
+export async function submitChatWord(inviteCode: string, playerUid: string, rawText: string) {
+  const lobbyRef = doc(db, "lobbies", inviteCode);
+
+  const text = normalizeOneWord(rawText);
+  if (!text) throw new Error("You must submit exactly ONE word");
+
+  await runTransaction(db, async (tx: Transaction) => {
+    const snap = await tx.get(lobbyRef);
+    if (!snap.exists()) throw new Error("Lobby does not exist");
+
+    const data = snap.data() as any;
+    const game = data.game;
+    if (!game) throw new Error("No game");
+
+    if (game.phase !== "chat") throw new Error("Chat is not active");
+
+    const playerOrder: string[] = game.playerOrder ?? [];
+    if (playerOrder.length < 2) throw new Error("Invalid player order");
+
+    const chat = game.chat;
+    if (!chat) throw new Error("No chat state");
+
+    if (chat.turnUid !== playerUid) throw new Error("Not your turn");
+
+    const round: number = chat.round ?? 1;
+    const turnIndex: number = chat.turnIndex ?? 0;
+
+    // ✅ log entry
+    const log = Array.isArray(chat.log) ? chat.log : [];
+    const nextLog = [
+      ...log,
+      {
+        uid: playerUid,
+        text,
+        round,
+        index: turnIndex,
+        at: Date.now(),
+      },
+    ];
+
+    // ✅ compute next turn
+    const n = playerOrder.length;
+    const isLastInRound = turnIndex === n - 1;
+
+    let nextRound = round;
+    let nextTurnIndex = turnIndex + 1;
+    let nextPhase: "chat" | "vote" = "chat";
+
+    if (isLastInRound) {
+      nextTurnIndex = 0;
+      nextRound = round + 1;
+    }
+
+    // After 3 rounds complete => vote
+    if (isLastInRound && round >= 3) {
+      nextPhase = "vote";
+    }
+
+    const nextTurnUid =
+      nextPhase === "chat"
+        ? playerOrder[nextTurnIndex]
+        : chat.turnUid; // irrelevant i vote
+
+    const update: any = {
+      game: {
+        chat: {
+          round: nextRound,
+          turnIndex: nextTurnIndex,
+          turnUid: nextTurnUid,
+          log: nextLog,
+        },
+        phase: nextPhase,
+      },
+    };
+
+    // hvis vi går til vote, init votes hvis ikke finnes
+    if (nextPhase === "vote") {
+      update.game.votes = game.votes ?? {};
+    }
+
+    tx.set(lobbyRef, update, { merge: true });
+  });
+}
+export async function submitVote(inviteCode: string, voterUid: string, targetUid: string) {
+  const lobbyRef = doc(db, "lobbies", inviteCode);
+
+  await runTransaction(db, async (tx: Transaction) => {
+    const snap = await tx.get(lobbyRef);
+    if (!snap.exists()) throw new Error("Lobby does not exist");
+
+    const data = snap.data() as any;
+    const game = data.game;
+    if (!game) throw new Error("No game");
+
+    if (game.phase !== "vote") throw new Error("Voting is not active");
+
+    const playerOrder: string[] = game.playerOrder ?? [];
+    const n = playerOrder.length;
+
+    if (!playerOrder.includes(voterUid)) throw new Error("Not a player");
+    if (!playerOrder.includes(targetUid)) throw new Error("Invalid vote target");
+
+    const votes: Record<string, string> = game.votes ?? {};
+
+    if (votes[voterUid]) throw new Error("You already voted");
+
+    const nextVotes = { ...votes, [voterUid]: targetUid };
+
+    // if not all voted yet, just save
+    if (Object.keys(nextVotes).length < n) {
+      tx.set(lobbyRef, { game: { votes: nextVotes } }, { merge: true });
+      return;
+    }
+
+    // ✅ tally votes
+    const tally: Record<string, number> = {};
+    for (const v of Object.values(nextVotes)) {
+      tally[v] = (tally[v] ?? 0) + 1;
+    }
+
+    // find max vote count
+    let max = -1;
+    for (const uid of Object.keys(tally)) {
+      if (tally[uid] > max) max = tally[uid];
+    }
+
+    const top = Object.keys(tally).filter((uid) => tally[uid] === max);
+
+    // deterministic tie-break: lexicographically smallest uid
+    top.sort();
+    const eliminatedUid = top[0];
+
+    const imposterUid: string = game.imposterUid;
+    const winner: "crew" | "imposter" = eliminatedUid === imposterUid ? "crew" : "imposter";
+
+    tx.set(
+      lobbyRef,
+      {
+        game: {
+          votes: nextVotes,
+          phase: "result",
+          result: {
+            winner,
+            eliminatedUid,
+          },
+        },
+        status: "finished",
+      },
+      { merge: true }
+    );
+  });
+}
+
+
 
 /* -------- REALTIME LISTENER -------- */
 

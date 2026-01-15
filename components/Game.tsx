@@ -1,26 +1,42 @@
 "use client";
 
 import { useState } from "react";
-import styled, { css, keyframes } from "styled-components";
+import styled, { keyframes } from "styled-components";
 import type { Player } from "@/types/player";
-import { FaUserSecret, FaUserAstronaut, FaEye, FaEyeSlash } from "react-icons/fa";
+import { FaUserSecret, FaUserAstronaut, FaEyeSlash } from "react-icons/fa";
+
+import ChatPanel from "@/components/ChatPanel";
+import VotePanel from "@/components/VotePanel";
+import ResultPanel from "@/components/ResultPanel";
+import { goToChatPhase } from "@/firebase/lobby";
 
 type GameData = {
   word?: string;
+  themeId?: string;
   imposterUid?: string;
   imposterHint?: string;
+  phase?: "reveal" | "chat" | "vote" | "result";
+  votes?: Record<string, string>;
+  result?: { winner: "crew" | "imposter"; eliminatedUid: string } | null;
+  chat?: {
+    round: number;
+    turnIndex: number;
+    turnUid: string;
+    log: Array<{ uid: string; text: string; round: number; index: number; at: number }>;
+  };
   assignments?: Record<string, { role: "imposter" | "word" }>;
 };
 
 type GameProps = {
+  inviteCode: string;
   players: Player[];
   myUid: string;
   game: GameData | null | undefined;
+  isHost: boolean;
+  hostUid: string;
 };
 
-/* ---------------- GAME COMPONENT ---------------- */
-
-export default function Game({ players, myUid, game }: GameProps) {
+export default function Game({ inviteCode, players, myUid, game, isHost, hostUid }: GameProps) {
   const role = game?.assignments?.[myUid]?.role;
   const isImposter = role === "imposter";
   const word = game?.word;
@@ -28,17 +44,17 @@ export default function Game({ players, myUid, game }: GameProps) {
 
   const [revealed, setRevealed] = useState(false);
 
-  // Finn antall imposters (i denne versjonen er det alltid 1, men kjekt å ha)
-  const imposterCount = 1;
+  const phase = game?.phase ?? "reveal";
 
   if (!role) return <Loading>Assigning roles...</Loading>;
 
   return (
     <Container>
       <StatusHeader>
-        <StatusDot $active={true} /> Game in Progress
+        <StatusDot $active={true} /> Game in Progress • <b>{phase.toUpperCase()}</b>
       </StatusHeader>
 
+      {/* ROLE CARD */}
       <RoleCard onClick={() => setRevealed(!revealed)} $isImposter={isImposter && revealed}>
         <CardContent>
           {!revealed ? (
@@ -52,7 +68,7 @@ export default function Game({ players, myUid, game }: GameProps) {
               <RoleIcon>
                 {isImposter ? <FaUserSecret size={50} /> : <FaUserAstronaut size={50} />}
               </RoleIcon>
-              
+
               <RoleTitle $isImposter={isImposter}>
                 {isImposter ? "YOU ARE THE IMPOSTER" : "YOU ARE CREW"}
               </RoleTitle>
@@ -62,7 +78,7 @@ export default function Game({ players, myUid, game }: GameProps) {
               {isImposter ? (
                 <InfoBox $type="imposter">
                   <InfoLabel>Your Hint</InfoLabel>
-                  <SecretWord>{hint ?? "No hint"}</SecretWord>
+                  <SecretWord>{hint ?? "Blend in."}</SecretWord>
                   <InfoDesc>Blend in. Don't let them know you don't know the word.</InfoDesc>
                 </InfoBox>
               ) : (
@@ -72,22 +88,57 @@ export default function Game({ players, myUid, game }: GameProps) {
                   <InfoDesc>Find the imposter who doesn't know this word.</InfoDesc>
                 </InfoBox>
               )}
-              
+
               <HideButton>
-                 <FaEyeSlash /> Hide Role
+                <FaEyeSlash /> Hide Role
               </HideButton>
             </RevealedState>
           )}
         </CardContent>
       </RoleCard>
 
+      {/* PHASE CONTROLS */}
+      {phase === "reveal" && (
+        <PhaseBox>
+          <PhaseTitle>Reveal Phase</PhaseTitle>
+          <PhaseText>Everyone should reveal their card, then start the chat.</PhaseText>
+
+          {isHost ? (
+            <PhaseBtn
+              onClick={async () => {
+                await goToChatPhase(inviteCode, hostUid);
+              }}
+            >
+              Start Chat
+            </PhaseBtn>
+          ) : (
+            <PhaseTextMuted>Waiting for host to start chat…</PhaseTextMuted>
+          )}
+        </PhaseBox>
+      )}
+
+      {phase === "chat" && game?.chat && (
+        <ChatPanel inviteCode={inviteCode} myUid={myUid} players={players} chat={game.chat} />
+      )}
+
+      {phase === "vote" && (
+        <VotePanel inviteCode={inviteCode} myUid={myUid} players={players} votes={game?.votes ?? {}} />
+      )}
+
+      {phase === "result" && game?.result && game?.imposterUid && (
+        <ResultPanel players={players} imposterUid={game.imposterUid} result={game.result} />
+      )}
+
+      {/* PLAYER LIST */}
       <PlayerGrid>
         <SectionTitle>Crewmates ({players.length})</SectionTitle>
         <List>
           {players.map((p) => (
             <PlayerRow key={p.uid} $isMe={p.uid === myUid}>
-              <AvatarPlaceholder>{p.avatar === 'astronaut' ? '👨‍🚀' : '👽'}</AvatarPlaceholder>
-              <PName>{p.name} {p.uid === myUid && "(You)"}</PName>
+              <AvatarPlaceholder>👨‍🚀</AvatarPlaceholder>
+              <PName>
+                {p.name} {p.uid === myUid && "(You)"}
+              </PName>
               <Status>Alive</Status>
             </PlayerRow>
           ))}
@@ -97,15 +148,15 @@ export default function Game({ players, myUid, game }: GameProps) {
   );
 }
 
-/* ---------------- STYLED COMPONENTS ---------------- */
+/* ---------------- STYLES ---------------- */
 
 const Container = styled.div`
   width: 100%;
-  max-width: 600px;
+  max-width: 900px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
   color: #fff;
 `;
 
@@ -144,10 +195,8 @@ const pulse = keyframes`
 const RoleCard = styled.div<{ $isImposter: boolean }>`
   position: relative;
   min-height: 320px;
-  background: ${({ $isImposter }) => 
-    $isImposter 
-      ? "linear-gradient(135deg, #450a0a, #7f1d1d)" 
-      : "linear-gradient(135deg, #1e293b, #334155)"};
+  background: ${({ $isImposter }) =>
+    $isImposter ? "linear-gradient(135deg, #450a0a, #7f1d1d)" : "linear-gradient(135deg, #1e293b, #334155)"};
   border-radius: 24px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
@@ -269,7 +318,46 @@ const HideButton = styled.div`
   opacity: 0.7;
 `;
 
-/* ---------------- PLAYER LIST STYLES ---------------- */
+const PhaseBox = styled.div`
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 1.25rem;
+  text-align: center;
+`;
+
+const PhaseTitle = styled.div`
+  font-weight: 900;
+  color: #e2e8f0;
+  margin-bottom: 0.4rem;
+`;
+
+const PhaseText = styled.div`
+  color: #cbd5e1;
+  margin-bottom: 0.9rem;
+`;
+
+const PhaseTextMuted = styled.div`
+  color: #94a3b8;
+  font-style: italic;
+`;
+
+const PhaseBtn = styled.button`
+  padding: 0.9rem 1.4rem;
+  border-radius: 14px;
+  border: none;
+  background: #4f46e5;
+  color: white;
+  font-weight: 900;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 0.95;
+  }
+`;
 
 const PlayerGrid = styled.div`
   background: rgba(15, 23, 42, 0.6);

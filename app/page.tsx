@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import styled from "styled-components";
 import Image from "next/image";
 import { FaCog, FaTimes } from "react-icons/fa";
+import ElectricAvatarPanel from "@/components/ElectricAvatarPanel";
+import { ELECTRIC_THEME_BY_SKIN } from "@/types/theme";
 
 import Lobby from "@/components/Lobby";
 import Themes, { WORD_DATA } from "@/components/Themes";
@@ -15,7 +17,6 @@ import { RedAstronautAvatar } from "@/components/avatars/RedAstronautAvatar";
 
 import type { Player } from "@/types/player";
 import { createLobby, joinLobby, listenToLobby, listenToLobbyPlayers, startGame, leaveLobby, closeLobby } from "@/firebase/lobby";
-
 
 import { useTheme } from "@/components/ThemeContext";
 
@@ -71,8 +72,16 @@ export default function Home() {
 
   const [lobby, setLobby] = useState<any | null>(null);
 
-  const [myPlayer, setMyPlayer] = useState<Player | null>(null);
+
   const [lobbyPlayers, setLobbyPlayers] = useState<Player[]>([]);
+  const [myPlayer, setMyPlayer] = useState<Player | null>({
+    uid: "",
+    playerId: 100,
+    name: "Player",
+    avatar: "astronaut",
+    skin: "classic",
+    joinedAt: Date.now(),
+  });
 
   const [isHost, setIsHost] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -80,22 +89,21 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
 
   const handleExitLobby = useCallback(async () => {
-  if (!inviteCode || !myPlayer) return;
+    if (!inviteCode || !myPlayer) return;
 
-  try {
-    await leaveLobby(inviteCode, myPlayer.uid);
-  } catch (e) {
-    console.error(e);
-  } finally {
-    // reset state tilbake til startmeny
-    setShowThemes(false);
-    setInviteCode("");
-    setLobby(null);
-    setLobbyPlayers([]);
-    setIsHost(false);
-  }
-}, [inviteCode, myPlayer]);
-
+    try {
+      await leaveLobby(inviteCode, myPlayer.uid);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      // reset state tilbake til startmeny
+      setShowThemes(false);
+      setInviteCode("");
+      setLobby(null);
+      setLobbyPlayers([]);
+      setIsHost(false);
+    }
+  }, [inviteCode, myPlayer]);
 
   // prefs
   const [avatarType, setAvatarType] = useState<AvatarType>("classicAstronaut");
@@ -133,13 +141,15 @@ export default function Home() {
           playerId: 0,
           name: `Player ${Math.floor(100 + Math.random() * 900)}`,
           avatar: "astronaut",
+          skin: "classic",
           joinedAt: Date.now(),
         };
         setMyPlayer(player);
       }
 
       if (isNewGame) {
-        const host: Player = { ...player, playerId: 100, joinedAt: Date.now() };
+        const host: Player = { ...player, playerId: 100, joinedAt: Date.now(), skin: player.skin || "classic" };
+        setMyPlayer(host);
 
         const characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
         const code = Array.from({ length: 6 }, () => characters[Math.floor(Math.random() * characters.length)]).join("");
@@ -153,7 +163,7 @@ export default function Home() {
       }
 
       if (codeToJoin) {
-        const joiner: Player = { ...player, playerId: 0, joinedAt: Date.now() };
+        const joiner: Player = { ...player, playerId: 0, joinedAt: Date.now(), skin: player.skin || "classic" };
         await joinLobby(codeToJoin, joiner);
 
         setMyPlayer(joiner);
@@ -303,30 +313,45 @@ const handleStartGame = useCallback(async () => {
       <PageContainer>
         <GlowEffect />
 
-        {/* Top-right player container */}
-        <PlayerContainer>
-          <Bar>
-            <PlayerWrapper>
-              <SkinScope data-skin={skin}>
-                <AvatarComponent size={100} />
-              </SkinScope>
+       {/* Top-right player container */}
+<PlayerDock>
+  <ElectricAvatarPanel
+    theme={ELECTRIC_THEME_BY_SKIN[skin]} // eller en fast farge hvis du vil
+    width={300}
+    height={200}
+    radius={60}
+    emberCount={120}
+    speed={1.15}
+    chaos={0.14}
+    lineWidth={1.15}
+  >
+    <PlayerContainerInner>
+      <Bar>
+        <PlayerWrapper>
+          <SkinScope data-skin={skin}>
+            <AvatarComponent size={100} />
+          </SkinScope>
 
-              <PlayerName>
-                {myPlayer ? `${myPlayer.name} (You)` : "You (not in lobby)"} {myPlayer?.playerId === 100 ? "👑" : ""}
-              </PlayerName>
-            </PlayerWrapper>
-          </Bar>
+          <PlayerName>
+            {myPlayer ? `${myPlayer.name} (You)` : "You (not in lobby)"}{" "}
+            {myPlayer?.playerId === 100 ? "👑" : ""}
+          </PlayerName>
+        </PlayerWrapper>
+      </Bar>
 
-          <Bar_2>
-            <VoteBadge>
-              <Image src="/Vote_V.png" alt="Vote V" width={50} height={50} priority />
-            </VoteBadge>
+      <Bar_2>
+        <VoteBadge>
+          <Image src="/Vote_V.png" alt="Vote V" width={50} height={50} priority />
+        </VoteBadge>
 
-            <SettingsButton onClick={() => setShowSettings(true)} aria-label="Open settings">
-              <FaCog />
-            </SettingsButton>
-          </Bar_2>
-        </PlayerContainer>
+        <SettingsButton onClick={() => setShowSettings(true)} aria-label="Open settings">
+          <FaCog />
+        </SettingsButton>
+      </Bar_2>
+    </PlayerContainerInner>
+  </ElectricAvatarPanel>
+</PlayerDock>
+
 
         <MainContainer>
           <InviteCode>
@@ -480,22 +505,32 @@ const MainContainer = styled.main`
   align-items: center;
 `;
 
-const PlayerContainer = styled.div`
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-  width: 300px;
-  height: 200px;
-  gap: 3rem;
-  background: #1e293b;
-  border: 1px white solid;
-  border-radius: 0 0 0 60px;
+const PlayerDock = styled.div`
   position: absolute;
   top: -4px;
   right: -1px;
-  padding: 1rem;
+  width: 300px;
+  height: 200px;
   z-index: 10;
 `;
+
+const PlayerContainerInner = styled.div`
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  gap: 3rem;
+
+  /* behold samme look */
+  background: #1e293b;
+  border-radius: 0 0 0 60px;
+  padding: 1rem;
+
+  /* ❌ fjern hvit border – electric tar over */
+  border: none;
+`;
+
 
 const Bar = styled.div`
   display: flex;
@@ -518,6 +553,16 @@ const PlayerWrapper = styled.div`
   gap: 0.5rem;
   border-radius: 12px;
   min-width: 120px;
+`;
+const PlayerInner = styled.div`
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  gap: 3rem;
+  padding: 1rem;
+  z-index: 10;
 `;
 
 const PlayerName = styled.div`

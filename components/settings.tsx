@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import styled, { css } from "styled-components";
 import { AstronautAvatar } from "@/components/avatars/AstronautAvatar";
 import { RedAstronautAvatar } from "@/components/avatars/RedAstronautAvatar";
+import ElectricAvatarPanel from "@/components/ElectricAvatarPanel";
 
 // ✅ BRUK KUN disse (ikke redefiner lokalt)
 import {
@@ -25,6 +26,41 @@ type SettingsPanelProps = {
   onAvatarTypeChange?: (type: AvatarType) => void;
 };
 
+/* ---------------- electric theme (NYTT, separat fra skin) ---------------- */
+
+type ElectricTheme = "blue" | "pink" | "red" | "green" | "purple";
+
+const ELECTRIC_THEMES: ElectricTheme[] = ["blue", "pink", "red", "green", "purple"];
+
+const ELECTRIC_THEME_LABEL: Record<ElectricTheme, string> = {
+  blue: "Blue",
+  pink: "Pink",
+  red: "Red",
+  green: "Green",
+  purple: "Purple",
+};
+
+const ELECTRIC_THEME_SWATCH: Record<ElectricTheme, string> = {
+  blue: "#9CD6FF",
+  pink: "#FFB3E6",
+  red: "#FF7A7A",
+  green: "#6FFFC7",
+  purple: "#D7B3FF",
+};
+
+function readElectricTheme(uid: string): ElectricTheme {
+  if (typeof window === "undefined") return "blue";
+  const key = `imposter_electric_theme_${uid}`;
+  const v = localStorage.getItem(key) as ElectricTheme | null;
+  return v && ELECTRIC_THEMES.includes(v) ? v : "blue";
+}
+
+function writeElectricTheme(uid: string, theme: ElectricTheme) {
+  if (typeof window === "undefined") return;
+  const key = `imposter_electric_theme_${uid}`;
+  localStorage.setItem(key, theme);
+}
+
 /* ---------------- component ---------------- */
 
 export default function SettingsPanel({
@@ -37,9 +73,13 @@ export default function SettingsPanel({
   const [skin, setSkin] = useState<AvatarSkin>("classic");
   const [avatarType, setAvatarType] = useState<AvatarType>("classicAstronaut");
 
+  // ✅ NYTT: electric-fargevalg for border (ikke skin)
+  const [electricTheme, setElectricTheme] = useState<ElectricTheme>("blue");
+
   useEffect(() => {
     setSkin(initialSkin ?? readSkin(uid));
     setAvatarType(initialAvatarType ?? readType(uid));
+    setElectricTheme(readElectricTheme(uid)); // ✅ leses separat
   }, [uid, initialSkin, initialAvatarType]);
 
   const selectSkin = useCallback(
@@ -70,6 +110,19 @@ export default function SettingsPanel({
     [uid, onAvatarTypeChange]
   );
 
+  // ✅ NYTT: velg border-farge (egen pref)
+  const selectElectricTheme = useCallback(
+    (next: ElectricTheme) => {
+      setElectricTheme(next);
+      writeElectricTheme(uid, next);
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("imposter:avatarPrefs"));
+      }
+    },
+    [uid]
+  );
+
   const previewSize = 200;
 
   const PreviewAvatar = useMemo(() => {
@@ -86,12 +139,46 @@ export default function SettingsPanel({
       <Grid>
         <Card>
           <CardTitle>Avatar Preview</CardTitle>
+
           <PreviewRow>
-            <BigAvatarFrame>
-              <SkinScope data-skin={skin}>
-                <PreviewAvatar size={previewSize} />
-              </SkinScope>
-            </BigAvatarFrame>
+            <PreviewCol>
+              <ElectricPreviewWrap>
+                <ElectricAvatarPanel
+                  theme={electricTheme} // ✅ border-farge styres her (ikke skin)
+                  width={240}
+                  height={240}
+                  radius={24}
+                  emberCount={120}
+                  speed={1.15}
+                  chaos={0.14}
+                  lineWidth={1.15}
+                >
+                  <BigAvatarFrame>
+                    <SkinScope data-skin={skin}>
+                      <PreviewAvatar size={previewSize} />
+                    </SkinScope>
+                  </BigAvatarFrame>
+                </ElectricAvatarPanel>
+              </ElectricPreviewWrap>
+
+              {/* ✅ NYTT: fargeknapper under preview */}
+              <ElectricControls>
+                <ElectricLabel>Electric color</ElectricLabel>
+                <SwatchRow>
+                  {ELECTRIC_THEMES.map((th) => (
+                    <SwatchButton
+                      key={th}
+                      type="button"
+                      aria-label={`Electric color: ${ELECTRIC_THEME_LABEL[th]}`}
+                      title={ELECTRIC_THEME_LABEL[th]}
+                      $active={electricTheme === th}
+                      $color={ELECTRIC_THEME_SWATCH[th]}
+                      onClick={() => selectElectricTheme(th)}
+                    />
+                  ))}
+                </SwatchRow>
+              </ElectricControls>
+            </PreviewCol>
 
             <MiniInfo>
               <InfoLine>
@@ -152,12 +239,7 @@ export default function SettingsPanel({
           <CardTitle>Skins (filter-based for now)</CardTitle>
           <SkinGrid>
             {SKINS.map((s) => (
-              <SkinButton
-                key={s.id}
-                type="button"
-                $active={skin === s.id}
-                onClick={() => selectSkin(s.id)}
-              >
+              <SkinButton key={s.id} type="button" $active={skin === s.id} onClick={() => selectSkin(s.id)}>
                 <SkinThumb>
                   <SkinScope data-skin={s.id}>
                     <PreviewAvatar size={72} />
@@ -250,7 +332,7 @@ const PreviewRow = styled.div`
   display: grid;
   grid-template-columns: 260px 1fr;
   gap: 1rem;
-  align-items: center;
+  align-items: start;
 
   @media (max-width: 900px) {
     grid-template-columns: 1fr;
@@ -259,18 +341,70 @@ const PreviewRow = styled.div`
   }
 `;
 
+const PreviewCol = styled.div`
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+`;
+
+const ElectricPreviewWrap = styled.div`
+  position: relative;
+  width: 240px;
+  height: 240px;
+`;
+
 const BigAvatarFrame = styled.div`
   width: 240px;
   height: 240px;
   border-radius: 24px;
   display: grid;
   place-items: center;
-  background: radial-gradient(
-    circle at 50% 35%,
-    rgba(99, 102, 241, 0.18) 0%,
-    rgba(15, 23, 42, 0) 70%
-  );
-  border: 1px solid rgba(99, 102, 241, 0.25);
+
+  background: radial-gradient(circle at 50% 35%, rgba(99, 102, 241, 0.18) 0%, rgba(15, 23, 42, 0) 70%);
+
+  /* ❌ fjernet border – electric border tar over */
+  border: none;
+`;
+
+const ElectricControls = styled.div`
+  display: grid;
+  gap: 0.45rem;
+  justify-items: center;
+`;
+
+const ElectricLabel = styled.div`
+  font-size: 0.85rem;
+  color: #94a3b8;
+`;
+
+const SwatchRow = styled.div`
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  justify-content: center;
+`;
+
+const SwatchButton = styled.button<{ $active: boolean; $color: string }>`
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: ${({ $color }) => $color};
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+
+  ${({ $active, $color }) =>
+    $active &&
+    css`
+      transform: scale(1.12);
+      border-color: rgba(255, 255, 255, 0.55);
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08), 0 0 18px ${$color}66;
+    `}
+
+  &:hover {
+    transform: scale(1.12);
+    box-shadow: 0 0 14px ${({ $color }) => `${$color}66`};
+  }
 `;
 
 const MiniInfo = styled.div`
@@ -296,8 +430,7 @@ const Label = styled.div`
 
 const Value = styled.div`
   color: #e2e8f0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.9rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -443,8 +576,7 @@ const SkinScope = styled.div`
   place-items: center;
 
   & > * {
-    filter: hue-rotate(var(--hue)) saturate(var(--sat)) brightness(var(--bright))
-      contrast(var(--contrast));
+    filter: hue-rotate(var(--hue)) saturate(var(--sat)) brightness(var(--bright)) contrast(var(--contrast));
   }
 
   &[data-skin="classic"] {

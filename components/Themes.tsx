@@ -526,7 +526,6 @@ const OptionCard = styled.button<{ $selected: boolean }>`
 `;
 const ItemEmoji = styled.div`
   font-size: 1.5rem;
-  margin-bottom: 0.4rem;
   line-height: 1;
 `;
 

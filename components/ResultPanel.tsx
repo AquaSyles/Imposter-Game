@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import styled from "styled-components";
+import styled, { keyframes } from "styled-components";
 import type { Player } from "@/types/player";
 import { resetGame } from "@/firebase/lobby";
 
@@ -15,7 +15,6 @@ type Props = {
 };
 
 export default function ResultPanel({ inviteCode, players, imposterUid, result, isHost, hostUid }: Props) {
-  const [error, setError] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
 
   const nameByUid = useMemo(() => {
@@ -25,155 +24,173 @@ export default function ResultPanel({ inviteCode, players, imposterUid, result, 
   }, [players]);
 
   const imposterName = nameByUid.get(imposterUid) ?? "Unknown";
-  const eliminatedName = nameByUid.get(result.eliminatedUid) ?? "Unknown";
+  const eliminatedName = nameByUid.get(result.eliminatedUid) ?? "Skipped Vote";
 
-  const winnerLabel = result.winner === "crew" ? "CREW" : "IMPOSTER";
-  const loserRole = result.loser ?? (result.winner === "crew" ? "imposter" : "crew");
-  const loserLabel = loserRole === "crew" ? "CREW" : "IMPOSTER";
+  const crewWon = result.winner === "crew";
 
   const handlePlayAgain = async () => {
-    setError(null);
     try {
       setResetting(true);
       await resetGame(inviteCode, hostUid);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to reset");
-    } finally {
+    } catch (e) {
+      console.error(e);
       setResetting(false);
     }
   };
 
   return (
-    <Wrap>
-      <Title>Game Over</Title>
+    <ResultContainer $crewWon={crewWon}>
+      <ResultHeader>
+        <SubTitle>GAME OVER</SubTitle>
+        <MainTitle $crewWon={crewWon}>
+            {crewWon ? "CREW VICTORY" : "IMPOSTER WINS"}
+        </MainTitle>
+      </ResultHeader>
 
-      <Winner $winner={result.winner}>
-        Winner: <b>{winnerLabel}</b>
-      </Winner>
+      <ReportCard>
+        <ReportRow>
+             <Label>The Imposter was</Label>
+             <BigValue $color="#fca5a5">{imposterName}</BigValue>
+        </ReportRow>
+        
+        <Divider />
+        
+        <ReportRow>
+             <Label>Eliminated</Label>
+             <Value>{eliminatedName}</Value>
+        </ReportRow>
+        
+        <ReportRow>
+             <Label>Outcome</Label>
+             <Value>{crewWon ? "Imposter Eliminated" : "Crew Eliminated Wrong Person"}</Value>
+        </ReportRow>
+      </ReportCard>
 
-      {/* ✅ Under winner: loser */}
-      <Loser $loser={loserRole}>
-        Loser: <b>{loserLabel}</b>
-      </Loser>
-
-      <Box>
-        <Row>
-          <Label>Imposter was:</Label>
-          <Value>{imposterName}</Value>
-        </Row>
-        <Row>
-          <Label>Eliminated:</Label>
-          <Value>{eliminatedName}</Value>
-        </Row>
-      </Box>
-
-      <Actions>
+      <Footer>
         {isHost ? (
-          <Btn onClick={handlePlayAgain} disabled={resetting}>
-            {resetting ? "Resetting..." : "Play Again"}
-          </Btn>
+          <ResetBtn onClick={handlePlayAgain} disabled={resetting} $crewWon={crewWon}>
+            {resetting ? "REBOOTING..." : "PLAY AGAIN"}
+          </ResetBtn>
         ) : (
-          <Muted>Waiting for host to start a new round…</Muted>
+          <Waiting>Waiting for host to restart...</Waiting>
         )}
-      </Actions>
-
-      {error && <ErrorBox>{error}</ErrorBox>}
-    </Wrap>
+      </Footer>
+    </ResultContainer>
   );
 }
 
-const Wrap = styled.div`
+// --- STYLES ---
+
+const slideUp = keyframes`
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+`;
+
+const ResultContainer = styled.div<{ $crewWon: boolean }>`
   width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 16px;
-  padding: 1.25rem;
   text-align: center;
+  animation: ${slideUp} 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+  
+  --theme-color: ${({ $crewWon }) => ($crewWon ? "#22c55e" : "#ef4444")};
 `;
 
-const Title = styled.div`
-  font-size: 1.5rem;
-  font-weight: 1000;
-  color: #e2e8f0;
-  margin-bottom: 0.75rem;
+const ResultHeader = styled.div`
+  margin-bottom: 2rem;
 `;
 
-const Winner = styled.div<{ $winner: "crew" | "imposter" }>`
-  padding: 0.9rem;
-  border-radius: 14px;
+const SubTitle = styled.div`
+  font-family: monospace;
+  color: #94a3b8;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+`;
+
+const MainTitle = styled.h1<{ $crewWon: boolean }>`
+  font-size: 3rem;
   font-weight: 900;
-  margin-bottom: 0.75rem;
-  color: ${({ $winner }) => ($winner === "crew" ? "#86efac" : "#fca5a5")};
-  background: ${({ $winner }) => ($winner === "crew" ? "rgba(34, 197, 94, 0.10)" : "rgba(239, 68, 68, 0.10)")};
-  border: 1px solid ${({ $winner }) => ($winner === "crew" ? "rgba(34, 197, 94, 0.18)" : "rgba(239, 68, 68, 0.18)")};
+  margin: 0;
+  text-transform: uppercase;
+  background: ${({ $crewWon }) => 
+    $crewWon 
+      ? "linear-gradient(to bottom, #86efac, #22c55e)" 
+      : "linear-gradient(to bottom, #fca5a5, #ef4444)"};
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 15px ${({ $crewWon }) => ($crewWon ? "rgba(34, 197, 94, 0.4)" : "rgba(239, 68, 68, 0.4)")});
 `;
 
-const Loser = styled.div<{ $loser: "crew" | "imposter" }>`
-  padding: 0.75rem;
-  border-radius: 14px;
-  font-weight: 900;
-  margin-bottom: 1rem;
-  color: ${({ $loser }) => ($loser === "crew" ? "#86efac" : "#fca5a5")};
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
+const ReportCard = styled.div`
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
 `;
 
-const Box = styled.div`
-  background: rgba(2, 6, 23, 0.45);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 14px;
-  padding: 1rem;
-`;
-
-const Row = styled.div`
+const ReportRow = styled.div`
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.5rem 0;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 1rem 0;
 `;
 
 const Label = styled.div`
-  color: #94a3b8;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+  color: #64748b;
 `;
 
 const Value = styled.div`
-  font-weight: 900;
+  font-size: 1.25rem;
   color: #e2e8f0;
+  font-weight: 600;
 `;
 
-const Actions = styled.div`
-  margin-top: 1rem;
+const BigValue = styled(Value)<{ $color?: string }>`
+  font-size: 2rem;
+  font-weight: 900;
+  color: ${({ $color }) => $color || "#fff"};
+`;
+
+const Divider = styled.div`
+  height: 1px;
+  background: rgba(255,255,255,0.1);
+  width: 100%;
+  margin: 1rem 0;
+`;
+
+const Footer = styled.div`
   display: flex;
   justify-content: center;
 `;
 
-const Btn = styled.button`
-  padding: 0.9rem 1.4rem;
-  border-radius: 14px;
+const ResetBtn = styled.button<{ $crewWon: boolean }>`
+  background: var(--theme-color);
+  color: #000;
   border: none;
-  background: #4f46e5;
-  color: #fff;
+  padding: 1rem 3rem;
   font-weight: 900;
+  font-size: 1.1rem;
+  border-radius: 12px;
   cursor: pointer;
+  transition: transform 0.2s;
+  box-shadow: 0 0 20px var(--theme-color);
 
+  &:hover {
+      transform: scale(1.05);
+  }
+  
   &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+      opacity: 0.7;
+      cursor: wait;
   }
 `;
 
-const Muted = styled.div`
-  color: #94a3b8;
-  font-style: italic;
-`;
-
-const ErrorBox = styled.div`
-  margin-top: 0.75rem;
-  color: #fecaca;
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  padding: 0.75rem;
-  border-radius: 12px;
+const Waiting = styled.div`
+    color: #94a3b8;
+    font-style: italic;
+    animation: pulse 2s infinite;
 `;

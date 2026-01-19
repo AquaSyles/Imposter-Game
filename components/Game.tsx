@@ -1,17 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import styled, { keyframes } from "styled-components";
+import styled, { keyframes, css } from "styled-components";
 import type { Player } from "@/types/player";
 import { readSkin, readType, type AvatarSkin, type AvatarType } from "@/firebase/avatarPrefs";
 import { RedAstronautAvatar } from "@/components/avatars/RedAstronautAvatar";
-import { FaUserSecret, FaUserAstronaut, FaEyeSlash } from "react-icons/fa";
+import { FaUserSecret, FaUserAstronaut, FaEyeSlash, FaFingerprint } from "react-icons/fa";
 import { AstronautAvatar } from "./avatars/AstronautAvatar";
 import ChatPanel from "@/components/ChatPanel";
 import VotePanel from "@/components/VotePanel";
 import ResultPanel from "@/components/ResultPanel";
 import { goToChatPhase } from "@/firebase/lobby";
 
+// --- Types ---
 type GameData = {
   word?: string;
   themeId?: string;
@@ -39,448 +40,488 @@ type GameProps = {
 };
 
 export default function Game({ inviteCode, players, myUid, game, isHost, hostUid }: GameProps) {
-  // Avatar prefs state
+  // Avatar prefs
   const [avatarType, setAvatarType] = useState<AvatarType>("classicAstronaut");
   const [skin, setSkin] = useState<AvatarSkin>("classic");
 
-  // Load avatar prefs
   useEffect(() => {
     if (!myUid) return;
-    setAvatarType(readType(myUid));
-    setSkin(readSkin(myUid));
-    
-    const onPrefs = () => {
+    const loadPrefs = () => {
       setAvatarType(readType(myUid));
       setSkin(readSkin(myUid));
     };
-    
-    window.addEventListener("imposter:avatarPrefs", onPrefs);
-    return () => window.removeEventListener("imposter:avatarPrefs", onPrefs);
+    loadPrefs();
+    window.addEventListener("imposter:avatarPrefs", loadPrefs);
+    return () => window.removeEventListener("imposter:avatarPrefs", loadPrefs);
   }, [myUid]);
-  
+
   const AvatarComponent = avatarType === "redAstronaut" ? RedAstronautAvatar : AstronautAvatar;
   const role = game?.assignments?.[myUid]?.role;
   const isImposter = role === "imposter";
   const word = game?.word;
   const hint = game?.imposterHint;
-
-  const [revealed, setRevealed] = useState(false);
-
   const phase = game?.phase ?? "reveal";
 
-  if (!role) return <Loading>Assigning roles...</Loading>;
+  const [cardFlipped, setCardFlipped] = useState(false);
+
+  if (!role) return <LoadingScreen>Initializing Neural Link...</LoadingScreen>;
 
   return (
-    <Container>
-      <StatusHeader>
-        <StatusDot $active={true} /> Game in Progress • <b>{phase.toUpperCase()}</b>
-      </StatusHeader>
+    <MainContainer>
+      <BackgroundOrb />
+      
+      {/* HEADER / HUD */}
+      <HudHeader>
+        <GameStatusBadge>
+          <StatusPulse />
+          {phase === "reveal" && "SECURE CHANNEL ESTABLISHED"}
+          {phase === "chat" && "AUDIO CHANNELS OPEN"}
+          {phase === "vote" && "VOTING IN PROGRESS"}
+          {phase === "result" && "MISSION REPORT"}
+        </GameStatusBadge>
+        <PhaseIndicator>
+          Phase: <span>{phase.toUpperCase()}</span>
+        </PhaseIndicator>
+      </HudHeader>
 
-      {/* ROLE CARD */}
-      <RoleCard onClick={() => setRevealed(!revealed)} $isImposter={isImposter && revealed}>
-        <CardContent>
-          {!revealed ? (
-            <HiddenState>
-              <LockIcon>🔒</LockIcon>
-              <TapText>Tap to reveal your role</TapText>
-              <SubText>Keep your screen hidden!</SubText>
-            </HiddenState>
-          ) : (
-            <RevealedState>
-              <RoleIcon>
-                {isImposter ? <FaUserSecret size={50} /> : <FaUserAstronaut size={50} />}
-              </RoleIcon>
+      <ContentArea>
+        {/* --- LEFT COLUMN: ACTION AREA --- */}
+        <ActionColumn>
+          
+          {/* ROLE CARD (Only shown during reveal or via toggle, but let's keep it dedicated in reveal phase) */}
+          <PerspectiveContainer>
+             <FlipCard $flipped={cardFlipped} onClick={() => setCardFlipped(!cardFlipped)}>
+                <CardFront>
+                   <FingerprintIcon><FaFingerprint /></FingerprintIcon>
+                   <TapText>AUTHENTICATE</TapText>
+                   <SubText>Tap to reveal identity</SubText>
+                </CardFront>
+                <CardBack $isImposter={isImposter}>
+                   <RoleIconWrapper>
+                      {isImposter ? <FaUserSecret /> : <FaUserAstronaut />}
+                   </RoleIconWrapper>
+                   <RoleTitle>{isImposter ? "IMPOSTER" : "CREW MEMBER"}</RoleTitle>
+                   
+                   <SecretContainer $isImposter={isImposter}>
+                      <SecretLabel>{isImposter ? "YOUR HINT" : "SECRET WORD"}</SecretLabel>
+                      <SecretValue>{isImposter ? (hint ?? "Blend in") : (word ?? "???")}</SecretValue>
+                   </SecretContainer>
+                   
+                   <HideInstruction><FaEyeSlash /> Tap to hide</HideInstruction>
+                </CardBack>
+             </FlipCard>
+          </PerspectiveContainer>
 
-              <RoleTitle $isImposter={isImposter}>
-                {isImposter ? "YOU ARE THE IMPOSTER" : "YOU ARE CREW"}
-              </RoleTitle>
-
-              <Divider />
-
-              {isImposter ? (
-                <InfoBox $type="imposter">
-                  <InfoLabel>Your Hint</InfoLabel>
-                  <SecretWord>{hint ?? "Blend in."}</SecretWord>
-                  <InfoDesc>Blend in. Don't let them know you don't know the word.</InfoDesc>
-                </InfoBox>
-              ) : (
-                <InfoBox $type="crew">
-                  <InfoLabel>Secret Word</InfoLabel>
-                  <SecretWord>{word ?? "Loading..."}</SecretWord>
-                  <InfoDesc>Find the imposter who doesn't know this word.</InfoDesc>
-                </InfoBox>
-              )}
-
-              <HideButton>
-                <FaEyeSlash /> Hide Role
-              </HideButton>
-            </RevealedState>
+          {/* PHASE COMPONENTS */}
+          {phase === "reveal" && (
+            <PhaseActionBox>
+               <h3>Mission Briefing</h3>
+               <p>Memorize your secret. Identify the traitor.</p>
+               {isHost ? (
+                  <NeonButton onClick={() => goToChatPhase(inviteCode, hostUid)}>
+                     INITIATE CHAT LINK
+                  </NeonButton>
+               ) : (
+                  <WaitingText>Waiting for Commander...</WaitingText>
+               )}
+            </PhaseActionBox>
           )}
-        </CardContent>
-      </RoleCard>
 
-      {/* PHASE CONTROLS */}
-      {phase === "reveal" && (
-        <PhaseBox>
-          <PhaseTitle>Reveal Phase</PhaseTitle>
-          <PhaseText>Everyone should reveal their card, then start the chat.</PhaseText>
-
-          {isHost ? (
-            <PhaseBtn
-              onClick={async () => {
-                await goToChatPhase(inviteCode, hostUid);
-              }}
-            >
-              Start Chat
-            </PhaseBtn>
-          ) : (
-            <PhaseTextMuted>Waiting for host to start chat…</PhaseTextMuted>
+          {phase === "chat" && game?.chat && (
+            <GlassPanel>
+               <ChatPanel inviteCode={inviteCode} myUid={myUid} players={players} chat={game.chat} />
+            </GlassPanel>
           )}
-        </PhaseBox>
-      )}
 
-      {phase === "chat" && game?.chat && (
-        <ChatPanel inviteCode={inviteCode} myUid={myUid} players={players} chat={game.chat} />
-      )}
+          {phase === "vote" && (
+             <VotePanel inviteCode={inviteCode} myUid={myUid} players={players} votes={game?.votes ?? {}} />
+          )}
 
-      {phase === "vote" && (
-        <VotePanel inviteCode={inviteCode} myUid={myUid} players={players} votes={game?.votes ?? {}} />
-      )}
+          {phase === "result" && game?.result && game?.imposterUid && (
+             <ResultPanel 
+                inviteCode={inviteCode} 
+                players={players} 
+                imposterUid={game.imposterUid} 
+                result={game.result as any} 
+                isHost={isHost} 
+                hostUid={hostUid} 
+             />
+          )}
 
-      {phase === "result" && game?.result && game?.imposterUid && (
-          <ResultPanel
-            inviteCode={inviteCode}
-            players={players}
-            imposterUid={game.imposterUid}
-            result={game.result as any}
-            isHost={isHost}
-            hostUid={hostUid}
-          />
-        )}
+        </ActionColumn>
 
+        {/* --- RIGHT COLUMN: CREW MANIFEST --- */}
+        <SideColumn>
+          <CrewManifest>
+            <ManifestTitle>CREW MANIFEST</ManifestTitle>
+            <CrewList>
+              {players.map((p) => (
+                <CrewItem key={p.uid} $isMe={p.uid === myUid}>
+                   <AvatarFrame data-skin={skin}>
+                      <AvatarComponent size={40} />
+                   </AvatarFrame>
+                   <CrewInfo>
+                      <CrewName>{p.name}</CrewName>
+                      <CrewStatus>ONLINE</CrewStatus>
+                   </CrewInfo>
+                   {p.uid === myUid && <MeBadge>YOU</MeBadge>}
+                </CrewItem>
+              ))}
+            </CrewList>
+          </CrewManifest>
+        </SideColumn>
 
-      {/* PLAYER LIST */}
-      <PlayerGrid>
-        <SectionTitle>Crewmates ({players.length})</SectionTitle>
-        <List>
-          {players.map((p) => (
-            <PlayerRow key={p.uid} $isMe={p.uid === myUid}>
-              <SkinScope data-skin={skin}>
-                <AvatarComponent size={80} />
-              </SkinScope>
-              <PName>
-                {p.name} {p.uid === myUid && "(You)"}
-              </PName>
-              <Status>Alive</Status>
-            </PlayerRow>
-          ))}
-        </List>
-      </PlayerGrid>
-    </Container>
+      </ContentArea>
+    </MainContainer>
   );
 }
 
-/* ---------------- STYLES ---------------- */
+// --- STYLED COMPONENTS ---
 
-const Container = styled.div`
+const float = keyframes`
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+`;
+
+const pulseGlow = keyframes`
+  0% { box-shadow: 0 0 5px #22c55e; }
+  50% { box-shadow: 0 0 20px #22c55e, 0 0 10px #22c55e inset; }
+  100% { box-shadow: 0 0 5px #22c55e; }
+`;
+
+const MainContainer = styled.div`
   width: 100%;
-  max-width: 900px;
+  max-width: 1200px;
   margin: 0 auto;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  padding: 1rem;
   color: #fff;
+  position: relative;
+  overflow-x: hidden;
 `;
 
-const Loading = styled.div`
-  text-align: center;
+const BackgroundOrb = styled.div`
+  position: fixed;
+  top: -20%;
+  left: -20%;
+  width: 800px;
+  height: 800px;
+  background: radial-gradient(circle, rgba(79, 70, 229, 0.15) 0%, rgba(0,0,0,0) 70%);
+  z-index: -1;
+  pointer-events: none;
+`;
+
+const LoadingScreen = styled.div`
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: monospace;
+  color: #6366f1;
   font-size: 1.5rem;
-  color: #94a3b8;
-  margin-top: 4rem;
+  letter-spacing: 2px;
 `;
 
-const StatusHeader = styled.div`
+const HudHeader = styled.header`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+`;
+
+const GameStatusBadge = styled.div`
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  font-family: monospace;
   font-size: 0.9rem;
   color: #94a3b8;
-  text-transform: uppercase;
   letter-spacing: 1px;
 `;
 
-const StatusDot = styled.div<{ $active: boolean }>`
+const StatusPulse = styled.div`
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background-color: #22c55e;
-  box-shadow: 0 0 10px #22c55e;
+  background: #22c55e;
+  animation: ${pulseGlow} 2s infinite;
 `;
 
-const pulse = keyframes`
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.05); opacity: 0.8; }
-  100% { transform: scale(1); opacity: 1; }
-`;
-
-const RoleCard = styled.div<{ $isImposter: boolean }>`
-  position: relative;
-  min-height: 320px;
-  background: ${({ $isImposter }) =>
-    $isImposter ? "linear-gradient(135deg, #450a0a, #7f1d1d)" : "linear-gradient(135deg, #1e293b, #334155)"};
-  border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
-  overflow: hidden;
-  cursor: pointer;
-  transition: transform 0.2s;
-
-  &:active {
-    transform: scale(0.98);
+const PhaseIndicator = styled.div`
+  font-size: 0.9rem;
+  color: #64748b;
+  
+  span {
+    color: #fff;
+    font-weight: 800;
+    margin-left: 0.5rem;
   }
 `;
 
-const CardContent = styled.div`
-  height: 100%;
+const ContentArea = styled.div`
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  
+  @media (min-width: 900px) {
+    grid-template-columns: 2fr 1fr;
+  }
+`;
+
+const ActionColumn = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+`;
+
+const SideColumn = styled.div`
+  display: flex;
+  flex-direction: column;
+`;
+
+/* --- 3D CARD FLIP --- */
+
+const PerspectiveContainer = styled.div`
+  perspective: 1000px;
   width: 100%;
-  padding: 2rem;
+  height: 350px;
+  margin-bottom: 1rem;
+  cursor: pointer;
+`;
+
+const FlipCard = styled.div<{ $flipped: boolean }>`
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.4, 0.0, 0.2, 1);
+  transform: ${({ $flipped }) => ($flipped ? "rotateY(180deg)" : "rotateY(0deg)")};
+`;
+
+const CardFace = styled.div`
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  border-radius: 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 `;
 
-const HiddenState = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  animation: ${pulse} 3s infinite;
+const CardFront = styled(CardFace)`
+  background: linear-gradient(145deg, #1e293b, #0f172a);
+  color: white;
+  
+  &::before {
+     content: "";
+     position: absolute;
+     inset: 0;
+     border-radius: 24px;
+     background: repeating-linear-gradient(
+        45deg,
+        rgba(255,255,255,0.03) 0px,
+        rgba(255,255,255,0.03) 1px,
+        transparent 1px,
+        transparent 10px
+     );
+  }
 `;
 
-const LockIcon = styled.div`
-  font-size: 4rem;
-  margin-bottom: 1rem;
+const CardBack = styled(CardFace)<{ $isImposter: boolean }>`
+  background: ${({ $isImposter }) => 
+    $isImposter 
+      ? "linear-gradient(145deg, #450a0a, #7f1d1d)" 
+      : "linear-gradient(145deg, #0c4a6e, #0369a1)"};
+  transform: rotateY(180deg);
 `;
 
-const TapText = styled.h3`
-  font-size: 1.5rem;
-  font-weight: 700;
+const FingerprintIcon = styled.div`
+  font-size: 5rem;
+  color: rgba(255,255,255,0.1);
+  margin-bottom: 1.5rem;
+  animation: ${float} 4s ease-in-out infinite;
+`;
+
+const TapText = styled.h2`
+  font-size: 1.8rem;
+  letter-spacing: 3px;
+  font-weight: 900;
   margin: 0;
-  color: #fff;
+  background: linear-gradient(to right, #fff, #94a3b8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 `;
 
 const SubText = styled.p`
-  color: #94a3b8;
-  margin: 0;
+  color: #64748b;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
 `;
 
-const RevealedState = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-  animation: fadeIn 0.3s ease;
-
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-`;
-
-const RoleIcon = styled.div`
+const RoleIconWrapper = styled.div`
+  font-size: 4rem;
   margin-bottom: 1rem;
-  color: #fff;
+  filter: drop-shadow(0 0 10px rgba(255,255,255,0.3));
 `;
 
-const RoleTitle = styled.h2<{ $isImposter: boolean }>`
-  font-size: 1.75rem;
-  font-weight: 900;
+const RoleTitle = styled.h2`
+  font-size: 2rem;
   text-transform: uppercase;
+  font-weight: 900;
   margin: 0 0 1.5rem 0;
-  text-align: center;
-  color: ${({ $isImposter }) => ($isImposter ? "#fca5a5" : "#60a5fa")};
-  text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+  letter-spacing: 1px;
 `;
 
-const Divider = styled.div`
-  width: 100%;
-  height: 1px;
-  background: rgba(255,255,255,0.15);
-  margin-bottom: 1.5rem;
-`;
-
-const InfoBox = styled.div<{ $type: "imposter" | "crew" }>`
+const SecretContainer = styled.div<{ $isImposter: boolean }>`
   background: rgba(0,0,0,0.3);
   padding: 1.5rem;
-  border-radius: 16px;
-  width: 100%;
+  border-radius: 12px;
+  width: 80%;
   text-align: center;
-  border: 1px solid ${({ $type }) => ($type === "imposter" ? "rgba(239, 68, 68, 0.3)" : "rgba(59, 130, 246, 0.3)")};
+  border: 1px solid ${({ $isImposter }) => $isImposter ? "rgba(252, 165, 165, 0.3)" : "rgba(125, 211, 252, 0.3)"};
 `;
 
-const InfoLabel = styled.div`
-  font-size: 0.85rem;
+const SecretLabel = styled.div`
+  font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  color: #94a3b8;
+  letter-spacing: 2px;
+  color: rgba(255,255,255,0.6);
   margin-bottom: 0.5rem;
 `;
 
-const SecretWord = styled.div`
-  font-size: 2rem;
+const SecretValue = styled.div`
+  font-size: 1.75rem;
   font-weight: 800;
   color: #fff;
-  margin-bottom: 0.5rem;
 `;
 
-const InfoDesc = styled.div`
-  font-size: 0.9rem;
-  color: #cbd5e1;
-`;
-
-const HideButton = styled.div`
-  margin-top: 1.5rem;
+const HideInstruction = styled.div`
+  margin-top: 2rem;
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.5);
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.9rem;
-  color: #94a3b8;
-  opacity: 0.7;
 `;
 
-const PhaseBox = styled.div`
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
+const PhaseActionBox = styled.div`
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 2rem;
+  text-align: center;
+  
+  h3 { margin-top: 0; font-size: 1.5rem; }
+  p { color: #94a3b8; margin-bottom: 1.5rem; }
+`;
+
+const GlassPanel = styled.div`
   background: rgba(15, 23, 42, 0.6);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 16px;
-  padding: 1.25rem;
-  text-align: center;
+  overflow: hidden;
 `;
 
-const PhaseTitle = styled.div`
-  font-weight: 900;
-  color: #e2e8f0;
-  margin-bottom: 0.4rem;
-`;
-
-const PhaseText = styled.div`
-  color: #cbd5e1;
-  margin-bottom: 0.9rem;
-`;
-
-const PhaseTextMuted = styled.div`
-  color: #94a3b8;
-  font-style: italic;
-`;
-
-const PhaseBtn = styled.button`
-  padding: 0.9rem 1.4rem;
-  border-radius: 14px;
-  border: none;
-  background: #4f46e5;
+const NeonButton = styled.button`
+  background: linear-gradient(90deg, #4f46e5, #6366f1);
   color: white;
-  font-weight: 900;
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: 12px;
+  font-weight: bold;
+  font-size: 1rem;
   cursor: pointer;
-
+  box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+  transition: all 0.2s;
+  
   &:hover {
-    opacity: 0.95;
+    transform: scale(1.02);
+    box-shadow: 0 0 25px rgba(99, 102, 241, 0.6);
   }
 `;
 
-const PlayerGrid = styled.div`
-  background: rgba(15, 23, 42, 0.6);
+const WaitingText = styled.div`
+  color: #64748b;
+  font-style: italic;
+  font-family: monospace;
+`;
+
+/* --- CREW LIST --- */
+
+const CrewManifest = styled.div`
+  background: rgba(15, 23, 42, 0.8);
   border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.08);
   padding: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 `;
 
-const SectionTitle = styled.h3`
+const ManifestTitle = styled.h4`
   margin: 0 0 1rem 0;
-  font-size: 1.1rem;
-  color: #94a3b8;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #64748b;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  padding-bottom: 0.5rem;
 `;
 
-const List = styled.div`
+const CrewList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.75rem;
 `;
 
-const PlayerRow = styled.div<{ $isMe: boolean }>`
+const CrewItem = styled.div<{ $isMe: boolean }>`
   display: flex;
   align-items: center;
   gap: 1rem;
   padding: 0.75rem;
-  background: ${({ $isMe }) => ($isMe ? "rgba(59, 130, 246, 0.15)" : "rgba(30, 41, 59, 0.4)")};
-  border: 1px solid ${({ $isMe }) => ($isMe ? "rgba(59, 130, 246, 0.3)" : "rgba(255,255,255,0.05)")};
-  border-radius: 10px;
+  background: ${({ $isMe }) => $isMe ? "rgba(99, 102, 241, 0.15)" : "rgba(255,255,255,0.03)"};
+  border-left: 2px solid ${({ $isMe }) => $isMe ? "#6366f1" : "transparent"};
+  border-radius: 0 8px 8px 0;
+  transition: background 0.2s;
 `;
 
-const AvatarPlaceholder = styled.div`
-  font-size: 1.5rem;
+const AvatarFrame = styled.div`
+  /* Avatar skin logic copied from original */
+  &[data-skin="classic"] { filter: contrast(1.02); }
+  &[data-skin="midnight"] { filter: hue-rotate(210deg) saturate(1.25) brightness(0.92); }
+  &[data-skin="mint"] { filter: hue-rotate(135deg) saturate(1.15) brightness(1.05); }
+  &[data-skin="sunset"] { filter: hue-rotate(320deg) saturate(1.25) brightness(1.03); }
+  &[data-skin="cyber"] { filter: hue-rotate(260deg) saturate(1.45) brightness(0.98); }
 `;
 
-const SkinScope = styled.div`
-  --hue: 0deg;
-  --sat: 1;
-  --bright: 1;
-  --contrast: 1;
-
-  display: grid;
-  place-items: center;
-
-  & > * {
-    filter: hue-rotate(var(--hue)) saturate(var(--sat)) brightness(var(--bright))
-      contrast(var(--contrast));
-  }
-
-  &[data-skin="classic"] {
-    --hue: 0deg;
-    --sat: 1;
-    --bright: 1;
-    --contrast: 1.02;
-  }
-
-  &[data-skin="midnight"] {
-    --hue: 210deg;
-    --sat: 1.25;
-    --bright: 0.92;
-    --contrast: 1.15;
-  }
-
-  &[data-skin="mint"] {
-    --hue: 135deg;
-    --sat: 1.15;
-    --bright: 1.05;
-    --contrast: 1.05;
-  }
-
-  &[data-skin="sunset"] {
-    --hue: 320deg;
-    --sat: 1.25;
-    --bright: 1.03;
-    --contrast: 1.08;
-  }
-
-  &[data-skin="cyber"] {
-    --hue: 260deg;
-    --sat: 1.45;
-    --bright: 0.98;
-    --contrast: 1.25;
-  }
-`;
-
-const PName = styled.div`
+const CrewInfo = styled.div`
   flex: 1;
-  font-weight: 500;
+`;
+
+const CrewName = styled.div`
+  font-weight: 600;
+  font-size: 0.95rem;
   color: #e2e8f0;
 `;
 
-const Status = styled.div`
-  font-size: 0.8rem;
+const CrewStatus = styled.div`
+  font-size: 0.7rem;
   color: #22c55e;
+  letter-spacing: 1px;
+`;
+
+const MeBadge = styled.div`
+  background: #6366f1;
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 800;
 `;

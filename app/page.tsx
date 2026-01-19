@@ -5,7 +5,6 @@ import styled from "styled-components";
 import Image from "next/image";
 import { FaCog, FaTimes } from "react-icons/fa";
 import ElectricAvatarPanel from "@/components/ElectricAvatarPanel";
-import { ELECTRIC_THEME_BY_SKIN } from "@/types/theme";
 
 import Lobby from "@/components/Lobby";
 import Themes, { WORD_DATA } from "@/components/Themes";
@@ -20,7 +19,8 @@ import { createLobby, joinLobby, listenToLobby, listenToLobbyPlayers, startGame,
 
 import { useTheme } from "@/components/ThemeContext";
 
-import { readSkin, readType, type AvatarSkin, type AvatarType } from "@/firebase/avatarPrefs";
+import { readSkin, readType, readElectricTheme, type AvatarSkin, type AvatarType } from "@/firebase/avatarPrefs";
+import { ElectricTheme } from "@/types/theme";
 
 /* ---------------- helpers ---------------- */
 
@@ -102,22 +102,30 @@ const [myPlayer, setMyPlayer] = useState<Player | null>(null);
   // prefs
   const [avatarType, setAvatarType] = useState<AvatarType>("classicAstronaut");
   const [skin, setSkin] = useState<AvatarSkin>("classic");
+  const [electricTheme, setElectricTheme] = useState<ElectricTheme>("blue");
 
   useEffect(() => {
     setAvatarType(readType(uid));
     setSkin(readSkin(uid));
+    setElectricTheme(readElectricTheme(uid));
   }, [uid]);
 
-  useEffect(() => {
-    const onPrefs = () => {
-      setAvatarType(readType(uid));
-      setSkin(readSkin(uid));
-    };
-    window.addEventListener("imposter:avatarPrefs", onPrefs);
-    return () => window.removeEventListener("imposter:avatarPrefs", onPrefs);
-  }, [uid]);
+
 
   const AvatarComponent = avatarType === "redAstronaut" ? RedAstronautAvatar : AstronautAvatar;
+  
+useEffect(() => {
+  const onPrefs = () => {
+    setAvatarType(readType(uid));
+    setSkin(readSkin(uid));
+    setElectricTheme(readElectricTheme(uid));
+  };
+
+  onPrefs(); // ✅ init
+  window.addEventListener("imposter:avatarPrefs", onPrefs);
+  return () => window.removeEventListener("imposter:avatarPrefs", onPrefs);
+}, [uid]);
+
 
   const copyToClipboard = () => {
     if (!inviteCode) return;
@@ -327,7 +335,7 @@ const handleStartGame = useCallback(async () => {
        {/* Top-right player container */}
 <PlayerDock>
   <ElectricAvatarPanel
-    theme={ELECTRIC_THEME_BY_SKIN[skin]} // eller en fast farge hvis du vil
+    theme={electricTheme}// eller en fast farge hvis du vil
     width={300}
     height={200}
     radius={60}

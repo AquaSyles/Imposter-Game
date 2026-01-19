@@ -3,8 +3,7 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import styled from "styled-components";
 
-type ElectricTheme = "blue" | "pink" | "red" | "green" | "purple";
-
+type ElectricTheme = "blue" | "pink" | "red" | "green" | "purple" | "white";
 type ElectricAvatarPanelProps = {
   className?: string;
   children: React.ReactNode;
@@ -24,13 +23,14 @@ type ElectricAvatarPanelProps = {
   lineWidth?: number;      // default 1.2
 };
 
+
 const THEMES: Record<
   ElectricTheme,
   {
     stroke: string;
-    glowA: string; // sterk
-    glowB: string; // medium
-    glowC: string; // svak
+    glowA: string;
+    glowB: string;
+    glowC: string;
     emberCore: string;
     emberMid: string;
     emberOuter: string;
@@ -49,6 +49,7 @@ const THEMES: Record<
     bgGlowA: "rgba(33, 127, 194, 0.35)",
     bgGlowB: "rgba(0, 0, 174, 0.22)",
   },
+
   pink: {
     stroke: "#FFB3E6",
     glowA: "rgba(255, 76, 189, 0.42)",
@@ -60,17 +61,20 @@ const THEMES: Record<
     bgGlowA: "rgba(255, 76, 189, 0.26)",
     bgGlowB: "rgba(255, 140, 220, 0.18)",
   },
+
+  // 2) ✅ gjør red mer blodrød
   red: {
-    stroke: "#FFB4B4",
-    glowA: "rgba(255, 70, 70, 0.40)",
-    glowB: "rgba(255, 70, 70, 0.15)",
-    glowC: "rgba(255, 70, 70, 0.00)",
-    emberCore: "rgba(255, 230, 210, 0.92)",
-    emberMid: "rgba(255, 120, 80, 0.55)",
-    emberOuter: "rgba(255, 70, 70, 0.18)",
-    bgGlowA: "rgba(255, 70, 70, 0.22)",
-    bgGlowB: "rgba(255, 140, 90, 0.14)",
+    stroke: "#FF3B3B",                // blodrød “core line”
+    glowA: "rgba(255, 0, 43, 0.46)",  // sterk rødglød
+    glowB: "rgba(255, 0, 43, 0.18)",  // medium
+    glowC: "rgba(255, 0, 43, 0.00)",  // falloff
+    emberCore: "rgba(255, 235, 235, 0.92)",
+    emberMid: "rgba(255, 28, 86, 0.62)",   // hot pinkish blood
+    emberOuter: "rgba(160, 0, 20, 0.22)",  // mørk blodkant
+    bgGlowA: "rgba(255, 0, 43, 0.22)",
+    bgGlowB: "rgba(120, 0, 18, 0.16)",
   },
+
   green: {
     stroke: "#B6FFD8",
     glowA: "rgba(40, 255, 180, 0.34)",
@@ -82,6 +86,7 @@ const THEMES: Record<
     bgGlowA: "rgba(40, 255, 180, 0.18)",
     bgGlowB: "rgba(90, 255, 210, 0.12)",
   },
+
   purple: {
     stroke: "#D7B3FF",
     glowA: "rgba(155, 90, 255, 0.36)",
@@ -92,6 +97,19 @@ const THEMES: Record<
     emberOuter: "rgba(120, 80, 255, 0.18)",
     bgGlowA: "rgba(155, 90, 255, 0.20)",
     bgGlowB: "rgba(90, 140, 255, 0.12)",
+  },
+
+  // 3) ✅ ny white theme (kald hvit / blålig “electric”)
+  white: {
+    stroke: "#FFFFFF",
+    glowA: "rgba(255, 255, 255, 0.34)",
+    glowB: "rgba(180, 210, 255, 0.14)",  // litt icy tint
+    glowC: "rgba(255, 255, 255, 0.00)",
+    emberCore: "rgba(255, 255, 255, 0.95)",
+    emberMid: "rgba(210, 235, 255, 0.55)",
+    emberOuter: "rgba(160, 200, 255, 0.18)",
+    bgGlowA: "rgba(255, 255, 255, 0.18)",
+    bgGlowB: "rgba(160, 200, 255, 0.10)",
   },
 };
 

@@ -1,6 +1,6 @@
 import { AvatarSkin } from "./player";
 
-export type ElectricTheme = "blue" | "pink" | "red" | "green" | "purple";
+export type ElectricTheme = "blue" | "pink" | "red" | "green" | "purple" | "white";
 
 export const ELECTRIC_THEME_BY_SKIN: Record<AvatarSkin, ElectricTheme> = {
   classic: "blue",

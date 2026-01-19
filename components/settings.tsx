@@ -10,10 +10,13 @@ import ElectricAvatarPanel from "@/components/ElectricAvatarPanel";
 import {
   readSkin,
   readType,
+  readElectricTheme,
   writeSkin,
   writeType,
+  writeElectricTheme,
   type AvatarSkin,
   type AvatarType,
+  type ElectricTheme,
 } from "@/firebase/avatarPrefs";
 
 /* ---------------- props ---------------- */
@@ -28,9 +31,8 @@ type SettingsPanelProps = {
 
 /* ---------------- electric theme (NYTT, separat fra skin) ---------------- */
 
-type ElectricTheme = "blue" | "pink" | "red" | "green" | "purple";
 
-const ELECTRIC_THEMES: ElectricTheme[] = ["blue", "pink", "red", "green", "purple"];
+const ELECTRIC_THEMES: ElectricTheme[] = ["blue", "pink", "red", "green", "purple","white" ];
 
 const ELECTRIC_THEME_LABEL: Record<ElectricTheme, string> = {
   blue: "Blue",
@@ -38,6 +40,7 @@ const ELECTRIC_THEME_LABEL: Record<ElectricTheme, string> = {
   red: "Red",
   green: "Green",
   purple: "Purple",
+  white: "White",
 };
 
 const ELECTRIC_THEME_SWATCH: Record<ElectricTheme, string> = {
@@ -46,20 +49,11 @@ const ELECTRIC_THEME_SWATCH: Record<ElectricTheme, string> = {
   red: "#FF7A7A",
   green: "#6FFFC7",
   purple: "#D7B3FF",
+  white: "#FFFFFF",
 };
 
-function readElectricTheme(uid: string): ElectricTheme {
-  if (typeof window === "undefined") return "blue";
-  const key = `imposter_electric_theme_${uid}`;
-  const v = localStorage.getItem(key) as ElectricTheme | null;
-  return v && ELECTRIC_THEMES.includes(v) ? v : "blue";
-}
 
-function writeElectricTheme(uid: string, theme: ElectricTheme) {
-  if (typeof window === "undefined") return;
-  const key = `imposter_electric_theme_${uid}`;
-  localStorage.setItem(key, theme);
-}
+
 
 /* ---------------- component ---------------- */
 
@@ -76,11 +70,12 @@ export default function SettingsPanel({
   // ✅ NYTT: electric-fargevalg for border (ikke skin)
   const [electricTheme, setElectricTheme] = useState<ElectricTheme>("blue");
 
-  useEffect(() => {
-    setSkin(initialSkin ?? readSkin(uid));
-    setAvatarType(initialAvatarType ?? readType(uid));
-    setElectricTheme(readElectricTheme(uid)); // ✅ leses separat
-  }, [uid, initialSkin, initialAvatarType]);
+ useEffect(() => {
+  setSkin(initialSkin ?? readSkin(uid));
+  setAvatarType(initialAvatarType ?? readType(uid));
+  setElectricTheme(readElectricTheme(uid));
+}, [uid, initialSkin, initialAvatarType]);
+
 
   const selectSkin = useCallback(
     (next: AvatarSkin) => {
@@ -110,18 +105,14 @@ export default function SettingsPanel({
     [uid, onAvatarTypeChange]
   );
 
-  // ✅ NYTT: velg border-farge (egen pref)
-  const selectElectricTheme = useCallback(
-    (next: ElectricTheme) => {
-      setElectricTheme(next);
-      writeElectricTheme(uid, next);
+ const selectElectricTheme = useCallback(
+  (next: ElectricTheme) => {
+    setElectricTheme(next);
+    writeElectricTheme(uid, next); // ✅ bruker shared pref
+  },
+  [uid]
+);
 
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("imposter:avatarPrefs"));
-      }
-    },
-    [uid]
-  );
 
   const previewSize = 200;
 

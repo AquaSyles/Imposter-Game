@@ -32,6 +32,8 @@ import type { Player } from "@/types/player";
 /* -------- CREATE -------- */
 
 export async function createLobby(inviteCode: string, host: Player) {
+  if (!inviteCode) throw new Error("createLobby: missing inviteCode");
+  if (!host?.uid) throw new Error("createLobby: host.uid is missing");
   const lobbyRef = doc(db, "lobbies", inviteCode);
 
   // ✅ TTL: 10 timer fra nå
@@ -169,6 +171,8 @@ export async function startGame(
 /* -------- JOIN (SAFE PLAYER ID) -------- */
 
 export async function joinLobby(inviteCode: string, player: Player) {
+  if (!inviteCode) throw new Error("joinLobby: missing inviteCode");
+  if (!player?.uid) throw new Error("joinLobby: player.uid is missing");
   const lobbyRef = doc(db, "lobbies", inviteCode);
   const playerRef = doc(db, "lobbies", inviteCode, "players", player.uid);
 
@@ -513,14 +517,30 @@ export async function leaveLobby(inviteCode: string, uid: string) {
 /* -------- REALTIME LISTENER -------- */
 
 export function listenToLobbyPlayers(inviteCode: string, callback: (players: Player[]) => void) {
-  const q = query(collection(db, "lobbies", inviteCode, "players"), orderBy("joinedAt", "asc"));
+  // Add validation for inviteCode
+  if (!inviteCode || typeof inviteCode !== 'string' || inviteCode.trim() === '') {
+    console.error('Invalid invite code:', inviteCode);
+    callback([]);
+    return () => {}; // Return a no-op function for consistency
+  }
 
-  return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
-    const players: Player[] = snapshot.docs.map((d: QueryDocumentSnapshot<DocumentData>) => ({
-      uid: d.id,
-      ...(d.data() as Omit<Player, "uid">),
-    }));
+  try {
+    const q = query(
+      collection(db, "lobbies", inviteCode, "players"), 
+      orderBy("joinedAt", "asc")
+    );
 
-    callback(players);
-  });
+    return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
+      const players: Player[] = snapshot.docs.map((d) => ({
+        uid: d.id,
+        ...(d.data() as Omit<Player, "uid">),
+      }));
+
+      callback(players);
+    });
+  } catch (error) {
+    console.error('Error setting up lobby players listener:', error);
+    callback([]);
+    return () => {}; // Return a no-op function for consistency
+  }
 }

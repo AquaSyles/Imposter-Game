@@ -74,14 +74,8 @@ export default function Home() {
 
 
   const [lobbyPlayers, setLobbyPlayers] = useState<Player[]>([]);
-  const [myPlayer, setMyPlayer] = useState<Player | null>({
-    uid: "",
-    playerId: 100,
-    name: "Player",
-    avatar: "astronaut",
-    skin: "classic",
-    joinedAt: Date.now(),
-  });
+const [myPlayer, setMyPlayer] = useState<Player | null>(null);
+
 
   const [isHost, setIsHost] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -132,48 +126,54 @@ export default function Home() {
     setTimeout(() => setIsCopied(false), 2000);
   };
 
-  const setupLobby = useCallback(
-    async (isNewGame = false, codeToJoin?: string) => {
-      let player = myPlayer;
-      if (!player) {
-        player = {
-          uid,
-          playerId: 0,
-          name: `Player ${Math.floor(100 + Math.random() * 900)}`,
-          avatar: "astronaut",
-          skin: "classic",
-          joinedAt: Date.now(),
-        };
-        setMyPlayer(player);
-      }
+const setupLobby = useCallback(
+  async (isNewGame = false, codeToJoin?: string) => {
+    // ✅ alltid sørg for at player har korrekt uid
+    let player: Player;
 
-      if (isNewGame) {
-        const host: Player = { ...player, playerId: 100, joinedAt: Date.now(), skin: player.skin || "classic" };
-        setMyPlayer(host);
+    if (!myPlayer || !myPlayer.uid) {
+      player = {
+        uid, // ✅ viktig
+        playerId: 0,
+        name: `Player ${Math.floor(100 + Math.random() * 900)}`,
+        avatar: "astronaut",
+        skin: "classic",
+        joinedAt: Date.now(),
+      };
+      setMyPlayer(player);
+    } else {
+      // ✅ tving korrekt uid hvis den av en eller annen grunn er feil/blank
+      player = { ...myPlayer, uid: myPlayer.uid || uid };
+      if (player.uid !== myPlayer.uid) setMyPlayer(player);
+    }
 
-        const characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-        const code = Array.from({ length: 6 }, () => characters[Math.floor(Math.random() * characters.length)]).join("");
+    if (isNewGame) {
+      const host: Player = { ...player, uid, playerId: 100, joinedAt: Date.now() };
+      setMyPlayer(host);
 
-        await createLobby(code, host);
+      const characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      const code = Array.from({ length: 6 }, () => characters[Math.floor(Math.random() * characters.length)]).join("");
 
-        setMyPlayer(host);
-        setInviteCode(code);
-        setIsHost(true);
-        return;
-      }
+      await createLobby(code, host);
 
-      if (codeToJoin) {
-        const joiner: Player = { ...player, playerId: 0, joinedAt: Date.now(), skin: player.skin || "classic" };
-        await joinLobby(codeToJoin, joiner);
+      setInviteCode(code);
+      setIsHost(true);
+      return;
+    }
 
-        setMyPlayer(joiner);
-        setInviteCode(codeToJoin);
-        setIsHost(false);
-        return;
-      }
-    },
-    [uid, myPlayer]
-  );
+    if (codeToJoin) {
+      const joiner: Player = { ...player, uid, playerId: 0, joinedAt: Date.now() };
+      await joinLobby(codeToJoin, joiner);
+
+      setMyPlayer(joiner);
+      setInviteCode(codeToJoin);
+      setIsHost(false);
+      return;
+    }
+  },
+  [uid, myPlayer]
+);
+
 
  const handleCreateGame = useCallback(async () => {
   if (isCreating) return;
@@ -214,16 +214,27 @@ export default function Home() {
 
   // listen players
   useEffect(() => {
-    if (!inviteCode) return;
+    // Only proceed if inviteCode is a non-empty string with exactly 6 uppercase alphanumeric characters
+    if (!inviteCode || typeof inviteCode !== 'string' || !/^[A-Z0-9]{6}$/.test(inviteCode)) {
+      setLobbyPlayers([]);
+      return;
+    }
+    
     const unsub = listenToLobbyPlayers(inviteCode, setLobbyPlayers);
     return () => unsub();
   }, [inviteCode]);
 
   // listen lobby
   useEffect(() => {
-  if (!inviteCode) return;
+    // Only proceed if inviteCode is a non-empty string with exactly 6 uppercase alphanumeric characters
+    if (!inviteCode || typeof inviteCode !== 'string' || !/^[A-Z0-9]{6}$/.test(inviteCode)) {
+      setLobby(null);
+      setLobbyPlayers([]);
+      setIsHost(false);
+      return;
+    }
 
-  const unsub = listenToLobby(inviteCode, (l) => {
+    const unsub = listenToLobby(inviteCode, (l) => {
     // hvis lobby-dokumentet er slettet
     if (!l) {
       setShowThemes(false);

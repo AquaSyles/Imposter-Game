@@ -388,15 +388,21 @@ const handleStartGame = useCallback(async () => {
 
 
         <MainContainer>
-          <InviteCode>
-            <CodeLabel>Invite Code</CodeLabel>
-            <CodeDisplay onClick={copyToClipboard} title="Click to copy">
-              {inviteCode || "Not created yet"}
-              {isCopied && <span style={{ marginLeft: "0.5rem", fontSize: "0.8rem", color: "#4ade80" }}>Copied!</span>}
-            </CodeDisplay>
-          </InviteCode>
+          {inviteCode && (
+            <InviteCode>
+              <CodeLabel>Invite Code</CodeLabel>
+              <CodeDisplay onClick={copyToClipboard} title="Click to copy">
+                {inviteCode}
+                {isCopied && (
+                  <span style={{ marginLeft: "0.5rem", fontSize: "0.8rem", color: "#4ade80" }}>
+                    Copied!
+                  </span>
+                )}
+              </CodeDisplay>
+            </InviteCode>
+          )}
 
-          <Title>Imposter Game</Title>
+          {!inviteCode && <Title>Imposter Game</Title>}
 
           {/* ✅ game view */}
           {isInGame ? (
@@ -661,6 +667,10 @@ const InviteCode = styled.div`
   margin-bottom: 2rem;
   text-align: center;
   color: #e5e7eb;
+  @media (max-width: 768px) {
+    margin-top:1.5rem;
+    margin-bottom: 0rem;
+  }
 `;
 
 const CodeDisplay = styled.div`
@@ -687,6 +697,7 @@ const CodeLabel = styled.div`
   font-size: 0.875rem;
   color: #94a3b8;
   margin-bottom: 0.25rem;
+  
 `;
 
 const ViewContainer = styled.div<{ $isActive: boolean }>`

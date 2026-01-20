@@ -503,6 +503,9 @@ const Title = styled.h1`
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  @media (max-width: 768px) {
+    font-size: 2.5rem;
+  }
 `;
 
 const GlowEffect = styled.div`
@@ -531,6 +534,10 @@ const PlayerDock = styled.div`
   width: 300px;
   height: 200px;
   z-index: 10;
+  @media (max-width: 768px) {
+    display: hidden;
+    visibility: hidden;
+  }
 `;
 
 const PlayerContainerInner = styled.div`

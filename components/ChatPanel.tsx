@@ -1,160 +1,208 @@
 "use client";
-
+import { AstronautAvatar } from "@/components/avatars/AstronautAvatar";
+import { RedAstronautAvatar } from "@/components/avatars/RedAstronautAvatar";
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import styled, { keyframes, css } from "styled-components";
 import type { Player } from "@/types/player";
 import { submitChatWord } from "@/firebase/lobby";
 import { FaPaperPlane, FaBroadcastTower, FaLock } from "react-icons/fa";
+import type { AvatarSkin, AvatarType } from "@/firebase/avatarPrefs";
 
 type ChatLogItem = {
-  uid: string;
-  text: string;
-  round: number;
-  index: number;
-  at: number;
+    uid: string;
+    text: string;
+    round: number;
+    index: number;
+    at: number;
 };
 
 type ChatState = {
-  round: number;
-  turnIndex: number;
-  turnUid: string;
-  log: ChatLogItem[];
+    round: number;
+    turnIndex: number;
+    turnUid: string;
+    log: ChatLogItem[];
 };
 
 type Props = {
-  inviteCode: string;
-  myUid: string;
-  players: Player[];
-  chat: ChatState;
+    inviteCode: string;
+    myUid: string;
+    players: Player[];
+    chat: ChatState;
+
+    avatarTypeByUid?: Record<string, AvatarType>;
+    skinByUid?: Record<string, AvatarSkin>;
+
+    avatarSize?: number;
+    secretWord?: string | null;
+    isImposter?: boolean;
 };
 
-export default function ChatPanel({ inviteCode, myUid, players, chat }: Props) {
-  const [input, setInput] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
-  
-  // Ref for auto-scrolling
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const isMyTurn = chat.turnUid === myUid;
+function AvatarByType({ type, size }: { type: AvatarType | undefined; size: number }) {
+    const Comp = type === "redAstronaut" ? RedAstronautAvatar : AstronautAvatar;
+    return <Comp size={size} />;
+}
 
-  const nameByUid = useMemo(() => {
-    const m = new Map<string, string>();
-    players.forEach((p) => m.set(p.uid, p.name));
-    return m;
-  }, [players]);
 
-  const turnName = nameByUid.get(chat.turnUid) ?? "Unknown";
+export default function ChatPanel({
+    inviteCode,
+    myUid,
+    players,
+    chat,
+    avatarTypeByUid = {},
+    skinByUid = {},
+    avatarSize = 42,
+    secretWord = null,
+    isImposter = false,
+}: Props) {
 
-  // Auto-scroll to bottom when chat log updates
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat.log]);
 
-  const handleSend = async () => {
-    setError(null);
-    if (!isMyTurn || !input.trim()) return;
+    const [input, setInput] = useState("");
+    const [error, setError] = useState<string | null>(null);
+    const [sending, setSending] = useState(false);
 
-    try {
-      setSending(true);
-      await submitChatWord(inviteCode, myUid, input.trim());
-      setInput("");
-    } catch (e: any) {
-      setError(e?.message ?? "Transmission failed");
-    } finally {
-      setSending(false);
-    }
-  };
+    // Ref for auto-scrolling
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Group messages by round for display
-  const groupedMessages = useMemo(() => {
-    const groups: { type: 'round' | 'msg', data: any }[] = [];
-    let currentRound = 0;
+    const isMyTurn = chat.turnUid === myUid;
 
-    chat.log.forEach((msg) => {
-      if (msg.round !== currentRound) {
-        currentRound = msg.round;
-        groups.push({ type: 'round', data: currentRound });
-      }
-      groups.push({ type: 'msg', data: msg });
-    });
-    return groups;
-  }, [chat.log]);
+    const nameByUid = useMemo(() => {
+        const m = new Map<string, string>();
+        players.forEach((p) => m.set(p.uid, p.name));
+        return m;
+    }, [players]);
 
-  return (
-    <PanelWrap>
-      {/* STATUS HEADER */}
-      <HeaderBar $isMyTurn={isMyTurn}>
-        <StatusIcon>
-          {isMyTurn ? <FaBroadcastTower /> : <FaLock />}
-        </StatusIcon>
-        <StatusText>
-          {isMyTurn ? (
-            <span>CHANNEL OPEN: <b>YOUR TURN</b></span>
-          ) : (
-            <span>WAITING FOR: <b>{turnName.toUpperCase()}</b></span>
-          )}
-        </StatusText>
-        <RoundBadge>ROUND {chat.round}</RoundBadge>
-      </HeaderBar>
+    const turnName = nameByUid.get(chat.turnUid) ?? "Unknown";
 
-      {/* CHAT AREA */}
-      <ChatWindow>
-        {groupedMessages.length === 0 && (
-           <EmptyState>
-             <FaBroadcastTower size={40} />
-             <p>Comms Link Established.<br/>Waiting for first transmission...</p>
-           </EmptyState>
-        )}
+    // Auto-scroll to bottom when chat log updates
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [chat.log]);
 
-        {groupedMessages.map((item, idx) => {
-          if (item.type === 'round') {
-            return <RoundDivider key={`r-${item.data}`}><span>Cycle {item.data} Initiated</span></RoundDivider>;
-          }
+    const handleSend = async () => {
+        setError(null);
+        if (!isMyTurn || !input.trim()) return;
+        const normalized = input.trim().toLowerCase();
+        const secret = (secretWord ?? "").trim().toLowerCase();
 
-          const m = item.data as ChatLogItem;
-          const isMe = m.uid === myUid;
+        if (!isImposter && secret && normalized === secret) {
+            setError("Crew cannot transmit the secret word.");
+            return;
+        }
 
-          return (
-            <MessageRow key={`${m.at}-${idx}`} $isMe={isMe}>
-              {!isMe && <AvatarCircle>{nameByUid.get(m.uid)?.substring(0,2).toUpperCase()}</AvatarCircle>}
-              
-              <MessageBubble $isMe={isMe}>
-                {!isMe && <SenderName>{nameByUid.get(m.uid)}</SenderName>}
-                <MessageText>{m.text}</MessageText>
-              </MessageBubble>
-              
-              {isMe && <AvatarCircle $isMe>{nameByUid.get(m.uid)?.substring(0,2).toUpperCase()}</AvatarCircle>}
-            </MessageRow>
-          );
-        })}
-        <div ref={messagesEndRef} />
-      </ChatWindow>
 
-      {/* INPUT AREA */}
-      <InputArea>
-        <StyledInput
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={isMyTurn ? "Transmit one word..." : `Waiting for ${turnName}...`}
-          disabled={!isMyTurn || sending}
-          autoFocus={isMyTurn}
-          maxLength={20} // Prevent cheating with sentences
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSend();
-          }}
-        />
-        <SendButton 
-          onClick={handleSend} 
-          disabled={!isMyTurn || sending || !input.trim()}
-        >
-          {sending ? "..." : <FaPaperPlane />}
-        </SendButton>
-      </InputArea>
-      
-      {error && <ErrorMessage>{error}</ErrorMessage>}
-    </PanelWrap>
-  );
+        try {
+            setSending(true);
+            await submitChatWord(inviteCode, myUid, input.trim());
+            setInput("");
+        } catch (e: any) {
+            setError(e?.message ?? "Transmission failed");
+        } finally {
+            setSending(false);
+        }
+    };
+
+    // Group messages by round for display
+    const groupedMessages = useMemo(() => {
+        const groups: { type: 'round' | 'msg', data: any }[] = [];
+        let currentRound = 0;
+
+        chat.log.forEach((msg) => {
+            if (msg.round !== currentRound) {
+                currentRound = msg.round;
+                groups.push({ type: 'round', data: currentRound });
+            }
+            groups.push({ type: 'msg', data: msg });
+        });
+        return groups;
+    }, [chat.log]);
+
+    return (
+        <PanelWrap>
+            {/* STATUS HEADER */}
+            <HeaderBar $isMyTurn={isMyTurn}>
+                <StatusIcon>
+                    {isMyTurn ? <FaBroadcastTower /> : <FaLock />}
+                </StatusIcon>
+                <StatusText>
+                    {isMyTurn ? (
+                        <span>CHANNEL OPEN: <b>YOUR TURN</b></span>
+                    ) : (
+                        <span>WAITING FOR: <b>{turnName.toUpperCase()}</b></span>
+                    )}
+                </StatusText>
+                <RoundBadge>ROUND {chat.round}</RoundBadge>
+            </HeaderBar>
+
+            {/* CHAT AREA */}
+            <ChatWindow>
+                {groupedMessages.length === 0 && (
+                    <EmptyState>
+                        <FaBroadcastTower size={40} />
+                        <p>Comms Link Established.<br />Waiting for first transmission...</p>
+                    </EmptyState>
+                )}
+
+                {groupedMessages.map((item, idx) => {
+                    if (item.type === 'round') {
+                        return <RoundDivider key={`r-${item.data}`}><span>Cycle {item.data} Initiated</span></RoundDivider>;
+                    }
+
+                    const m = item.data as ChatLogItem;
+                    const isMe = m.uid === myUid;
+
+                    return (
+                        <MessageRow key={`${m.at}-${idx}`} $isMe={isMe}>
+                            {!isMe && (
+                                <AvatarCircle>
+                                    <SkinScope data-skin={skinByUid?.[m.uid] ?? "classic"}>
+                                        <AvatarByType type={avatarTypeByUid?.[m.uid]} size={avatarSize} />
+                                    </SkinScope>
+                                </AvatarCircle>
+                            )}
+
+                            <MessageBubble $isMe={isMe}>
+                                {!isMe && <SenderName>{nameByUid.get(m.uid)}</SenderName>}
+                                <MessageText>{m.text}</MessageText>
+                            </MessageBubble>
+
+                            {isMe && (
+                                <AvatarCircle $isMe>
+                                    <SkinScope data-skin={skinByUid[m.uid] ?? "classic"}>
+                                        <AvatarByType type={avatarTypeByUid[m.uid] ?? "classicAstronaut"} size={avatarSize ?? 26} />
+                                    </SkinScope>
+                                </AvatarCircle>
+                            )}
+                        </MessageRow>
+                    );
+                })}
+                <div ref={messagesEndRef} />
+            </ChatWindow>
+
+            {/* INPUT AREA */}
+            <InputArea>
+                <StyledInput
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder={isMyTurn ? "Transmit one word..." : `Waiting for ${turnName}...`}
+                    disabled={!isMyTurn || sending}
+                    autoFocus={isMyTurn}
+                    maxLength={20} // Prevent cheating with sentences
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSend();
+                    }}
+                />
+                <SendButton
+                    onClick={handleSend}
+                    disabled={!isMyTurn || sending || !input.trim()}
+                >
+                    {sending ? "..." : <FaPaperPlane />}
+                </SendButton>
+            </InputArea>
+
+            {error && <ErrorMessage>{error}</ErrorMessage>}
+        </PanelWrap>
+    );
 }
 
 /* --- STYLES --- */
@@ -182,9 +230,9 @@ const PanelWrap = styled.div`
 
 const HeaderBar = styled.div<{ $isMyTurn: boolean }>`
   padding: 0.75rem 1rem;
-  background: ${({ $isMyTurn }) => $isMyTurn 
-    ? "linear-gradient(90deg, rgba(79, 70, 229, 0.2), rgba(6, 182, 212, 0.1))" 
-    : "rgba(15, 23, 42, 0.6)"};
+  background: ${({ $isMyTurn }) => $isMyTurn
+        ? "linear-gradient(90deg, rgba(79, 70, 229, 0.2), rgba(6, 182, 212, 0.1))"
+        : "rgba(15, 23, 42, 0.6)"};
   border-bottom: 1px solid rgba(255,255,255,0.08);
   display: flex;
   align-items: center;
@@ -276,19 +324,35 @@ const MessageRow = styled.div<{ $isMe: boolean }>`
   margin-bottom: 0.25rem;
   animation: ${fadeIn} 0.3s ease-out;
 `;
+const SkinScope = styled.div`
+  --hue: 0deg;
+  --sat: 1;
+  --bright: 1;
+  --contrast: 1;
+
+  display: grid;
+  place-items: center;
+
+  & > * {
+    filter: hue-rotate(var(--hue)) saturate(var(--sat)) brightness(var(--bright)) contrast(var(--contrast));
+  }
+
+  &[data-skin="classic"] { --hue: 0deg; --sat: 1; --bright: 1; --contrast: 1.02; }
+  &[data-skin="midnight"] { --hue: 210deg; --sat: 1.25; --bright: 0.92; --contrast: 1.15; }
+  &[data-skin="mint"] { --hue: 135deg; --sat: 1.15; --bright: 1.05; --contrast: 1.05; }
+  &[data-skin="sunset"] { --hue: 320deg; --sat: 1.25; --bright: 1.03; --contrast: 1.08; }
+  &[data-skin="cyber"] { --hue: 260deg; --sat: 1.45; --bright: 0.98; --contrast: 1.25; }
+`;
 
 const AvatarCircle = styled.div<{ $isMe?: boolean }>`
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  background: ${({ $isMe }) => $isMe ? "#4f46e5" : "#334155"};
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: white;
-  border: 1px solid rgba(255,255,255,0.1);
+  background: ${({ $isMe }) => ($isMe ? "rgba(79, 70, 229, 0.35)" : "rgba(51, 65, 85, 0.55)")};
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,0.12);
+  overflow: hidden;
 `;
 
 const MessageBubble = styled.div<{ $isMe: boolean }>`
@@ -301,13 +365,13 @@ const MessageBubble = styled.div<{ $isMe: boolean }>`
   border-bottom-left-radius: ${({ $isMe }) => $isMe ? "16px" : "2px"};
   border-bottom-right-radius: ${({ $isMe }) => $isMe ? "2px" : "16px"};
 
-  background: ${({ $isMe }) => $isMe 
-    ? "linear-gradient(135deg, #4f46e5, #4338ca)" 
-    : "rgba(30, 41, 59, 0.8)"};
+  background: ${({ $isMe }) => $isMe
+        ? "linear-gradient(135deg, #4f46e5, #4338ca)"
+        : "rgba(30, 41, 59, 0.8)"};
   
-  border: 1px solid ${({ $isMe }) => $isMe 
-    ? "rgba(99, 102, 241, 0.5)" 
-    : "rgba(255,255,255,0.05)"};
+  border: 1px solid ${({ $isMe }) => $isMe
+        ? "rgba(99, 102, 241, 0.5)"
+        : "rgba(255,255,255,0.05)"};
 
   color: #fff;
   box-shadow: 0 2px 10px rgba(0,0,0,0.1);

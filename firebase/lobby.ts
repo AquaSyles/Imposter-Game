@@ -250,19 +250,38 @@ export async function goToChatPhase(inviteCode: string, hostUid: string) {
   });
 }
 function normalizeOneWord(input: string) {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
+  if (!input) return null;
 
-  // fjern flere spaces
-  const parts = trimmed.split(/\s+/).filter(Boolean);
-  if (parts.length !== 1) return null;
+  // 1) trim + unicode normalize (gjør f.eks. “fullwidth” bokstaver normale)
+  let s = input.trim().normalize("NFKC");
+  if (!s) return null;
 
-  // valgfritt: fjern rare tegn, behold bokstaver/tall/æøå/-
-  const cleaned = parts[0].replace(/[^\p{L}\p{N}\-ÆØÅæøå]/gu, "");
-  if (!cleaned) return null;
+  // 2) fjern zero-width / usynlige tegn (kan brukes til trolling)
+  s = s.replace(/[\u200B-\u200D\uFEFF]/g, "");
+  if (!s) return null;
 
-  return cleaned;
+  // 3) må være nøyaktig ett "ord" => ingen whitespace inni
+  //    (du kan også tillate newline etc. ved \s)
+  if (/\s/.test(s)) return null;
+
+  // 4) Strip tegn i start/slutt som ofte kommer med: !!word??  -> word
+  //    (men behold bindestrek/apostrof inni ordet)
+  s = s.replace(/^[^0-9A-Za-zÆØÅæøå]+|[^0-9A-Za-zÆØÅæøå]+$/g, "");
+
+  // 5) Fjern alt som ikke er bokstav/tall/æøå/ bindestrek / apostrof
+  //    - apostrof er valgfritt: ta bort ' hvis du ikke vil ha det
+  s = s.replace(/[^0-9A-Za-zÆØÅæøå\-']/g, "");
+
+  // 6) Ikke tillat at ordet kun er bindestreker/apostrofer
+  const hasLetterOrNumber = /[0-9A-Za-zÆØÅæøå]/.test(s);
+  if (!s || !hasLetterOrNumber) return null;
+
+  // 7) valgfritt: maks lengde her også (du har maxLength=20 i UI)
+  if (s.length > 20) s = s.slice(0, 20);
+
+  return s;
 }
+
 
 export async function submitChatWord(inviteCode: string, playerUid: string, rawText: string) {
   const lobbyRef = doc(db, "lobbies", inviteCode);
@@ -279,6 +298,17 @@ export async function submitChatWord(inviteCode: string, playerUid: string, rawT
     if (!game) throw new Error("No game");
 
     if (game.phase !== "chat") throw new Error("Chat is not active");
+    const role = game.assignments?.[playerUid]?.role;
+    const isImposter = role === "imposter";
+
+    const secretWord = normalizeOneWord((game.word ?? "").toString())?.toLowerCase() ?? "";
+    const attempted = text.toLowerCase();
+
+
+    if (!isImposter && secretWord && attempted === secretWord) {
+      throw new Error("Crew cannot submit the secret word");
+    }
+
 
     const playerOrder: string[] = game.playerOrder ?? [];
     if (playerOrder.length < 2) throw new Error("Invalid player order");
@@ -521,12 +551,12 @@ export function listenToLobbyPlayers(inviteCode: string, callback: (players: Pla
   if (!inviteCode || typeof inviteCode !== 'string' || inviteCode.trim() === '') {
     console.error('Invalid invite code:', inviteCode);
     callback([]);
-    return () => {}; // Return a no-op function for consistency
+    return () => { }; // Return a no-op function for consistency
   }
 
   try {
     const q = query(
-      collection(db, "lobbies", inviteCode, "players"), 
+      collection(db, "lobbies", inviteCode, "players"),
       orderBy("joinedAt", "asc")
     );
 
@@ -541,6 +571,6 @@ export function listenToLobbyPlayers(inviteCode: string, callback: (players: Pla
   } catch (error) {
     console.error('Error setting up lobby players listener:', error);
     callback([]);
-    return () => {}; // Return a no-op function for consistency
+    return () => { }; // Return a no-op function for consistency
   }
 }

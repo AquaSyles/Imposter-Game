@@ -87,71 +87,96 @@ export default function Game({ inviteCode, players, myUid, game, isHost, hostUid
       <ContentArea>
         {/* --- LEFT COLUMN: ACTION AREA --- */}
         <ActionColumn>
-          
-          {/* ROLE CARD (Only shown during reveal or via toggle, but let's keep it dedicated in reveal phase) */}
-          <PerspectiveContainer>
-             <FlipCard $flipped={cardFlipped} onClick={() => setCardFlipped(!cardFlipped)}>
-                <CardFront>
-                   <FingerprintIcon><FaFingerprint /></FingerprintIcon>
-                   <TapText>AUTHENTICATE</TapText>
-                   <SubText>Tap to reveal identity</SubText>
-                </CardFront>
-                <CardBack $isImposter={isImposter}>
-                   <RoleIconWrapper>
-                      {isImposter ? <FaUserSecret /> : <FaUserAstronaut />}
-                   </RoleIconWrapper>
-                   <RoleTitle>{isImposter ? "IMPOSTER" : "CREW MEMBER"}</RoleTitle>
-                   
-                   <SecretContainer $isImposter={isImposter}>
-                      <SecretLabel>{isImposter ? "YOUR HINT" : "SECRET WORD"}</SecretLabel>
-                      <SecretValue>{isImposter ? (hint ?? "Blend in") : (word ?? "???")}</SecretValue>
-                   </SecretContainer>
-                   
-                   <HideInstruction><FaEyeSlash /> Tap to hide</HideInstruction>
-                </CardBack>
-             </FlipCard>
-          </PerspectiveContainer>
 
-          {/* PHASE COMPONENTS */}
-          {phase === "reveal" && (
-            <PhaseActionBox>
-               <h3>Mission Briefing</h3>
-               <p>Memorize your secret. Identify the traitor.</p>
-               {isHost ? (
-                  <NeonButton onClick={() => goToChatPhase(inviteCode, hostUid)}>
-                     INITIATE CHAT LINK
-                  </NeonButton>
-               ) : (
-                  <WaitingText>Waiting for Commander...</WaitingText>
-               )}
-            </PhaseActionBox>
-          )}
+  {/* ✅ STOR FLIP-KORT kun i reveal */}
+  {phase === "reveal" && (
+    <PerspectiveContainer>
+      <FlipCard $flipped={cardFlipped} onClick={() => setCardFlipped(!cardFlipped)}>
+        <CardFront>
+          <FingerprintIcon><FaFingerprint /></FingerprintIcon>
+          <TapText>AUTHENTICATE</TapText>
+          <SubText>Tap to reveal identity</SubText>
+        </CardFront>
 
-          {phase === "chat" && game?.chat && (
-            <GlassPanel>
-               <ChatPanel inviteCode={inviteCode} myUid={myUid} players={players} chat={game.chat} />
-            </GlassPanel>
-          )}
+        <CardBack $isImposter={isImposter}>
+          <RoleIconWrapper>
+            {isImposter ? <FaUserSecret /> : <FaUserAstronaut />}
+          </RoleIconWrapper>
+          <RoleTitle>{isImposter ? "IMPOSTER" : "CREW MEMBER"}</RoleTitle>
 
-          {phase === "vote" && (
-             <VotePanel inviteCode={inviteCode} myUid={myUid} players={players} votes={game?.votes ?? {}} />
-          )}
+          <SecretContainer $isImposter={isImposter}>
+            <SecretLabel>{isImposter ? "YOUR HINT" : "SECRET WORD"}</SecretLabel>
+            <SecretValue>{isImposter ? (hint ?? "Blend in") : (word ?? "???")}</SecretValue>
+          </SecretContainer>
 
-          {phase === "result" && game?.result && game?.imposterUid && (
-             <ResultPanel 
-                inviteCode={inviteCode} 
-                players={players} 
-                imposterUid={game.imposterUid} 
-                result={game.result as any} 
-                isHost={isHost} 
-                hostUid={hostUid} 
-             />
-          )}
+          <HideInstruction><FaEyeSlash /> Tap to hide</HideInstruction>
+        </CardBack>
+      </FlipCard>
+    </PerspectiveContainer>
+  )}
 
-        </ActionColumn>
+  {/* ✅ Chat skal ligge her (tar plassen der flipkortet var) */}
+  {phase === "chat" && game?.chat && (
+    <GlassPanel>
+      <ChatPanel inviteCode={inviteCode} myUid={myUid} players={players} chat={game.chat} />
+    </GlassPanel>
+  )}
+
+  {phase === "vote" && (
+    <VotePanel inviteCode={inviteCode} myUid={myUid} players={players} votes={game?.votes ?? {}} />
+  )}
+
+  {phase === "result" && game?.result && game?.imposterUid && (
+    <ResultPanel
+      inviteCode={inviteCode}
+      players={players}
+      imposterUid={game.imposterUid}
+      result={game.result as any}
+      isHost={isHost}
+      hostUid={hostUid}
+    />
+  )}
+
+  {/* reveal action box */}
+  {phase === "reveal" && (
+    <PhaseActionBox>
+      <h3>Mission Briefing</h3>
+      <p>Memorize your secret. Identify the traitor.</p>
+      {isHost ? (
+        <NeonButton onClick={() => goToChatPhase(inviteCode, hostUid)}>
+          INITIATE CHAT LINK
+        </NeonButton>
+      ) : (
+        <WaitingText>Waiting for Commander...</WaitingText>
+      )}
+    </PhaseActionBox>
+  )}
+</ActionColumn>
 
         {/* --- RIGHT COLUMN: CREW MANIFEST --- */}
         <SideColumn>
+          {phase !== "reveal" && (
+    <RoleMiniCard $isImposter={isImposter}>
+      <RoleMiniTop>
+        <RoleMiniTitle>{isImposter ? "IMPOSTER" : "CREW"}</RoleMiniTitle>
+        <RoleMiniTag>{isImposter ? "COVERT" : "CONFIRMED"}</RoleMiniTag>
+      </RoleMiniTop>
+
+      <RoleMiniBody>
+        {isImposter ? (
+          <>
+            <MiniLabel>Hint</MiniLabel>
+            <MiniValue>{hint ?? "Blend in"}</MiniValue>
+          </>
+        ) : (
+          <>
+            <MiniLabel>Word</MiniLabel>
+            <MiniValue>{word ?? "???"}</MiniValue>
+          </>
+        )}
+      </RoleMiniBody>
+    </RoleMiniCard>
+  )}
           <CrewManifest>
             <ManifestTitle>CREW MANIFEST</ManifestTitle>
             <CrewList>
@@ -381,6 +406,62 @@ const RoleTitle = styled.h2`
   font-weight: 900;
   margin: 0 0 1.5rem 0;
   letter-spacing: 1px;
+`;
+const RoleMiniCard = styled.div<{ $isImposter: boolean }>`
+  width: 100%;
+  margin-bottom: 1rem;
+  border-radius: 16px;
+  padding: 1rem;
+  background: ${({ $isImposter }) =>
+    $isImposter
+      ? "linear-gradient(145deg, rgba(69, 10, 10, 0.75), rgba(127, 29, 29, 0.55))"
+      : "linear-gradient(145deg, rgba(12, 74, 110, 0.75), rgba(3, 105, 161, 0.55))"};
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+`;
+
+const RoleMiniTop = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+`;
+
+const RoleMiniTitle = styled.div`
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  font-size: 0.95rem;
+`;
+
+const RoleMiniTag = styled.div`
+  font-size: 0.7rem;
+  letter-spacing: 2px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.8);
+`;
+
+const RoleMiniBody = styled.div`
+  display: grid;
+  gap: 0.35rem;
+`;
+
+const MiniLabel = styled.div`
+  font-size: 0.65rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.65);
+`;
+
+const MiniValue = styled.div`
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #fff;
+  line-height: 1.2;
+  word-break: break-word;
 `;
 
 const SecretContainer = styled.div<{ $isImposter: boolean }>`

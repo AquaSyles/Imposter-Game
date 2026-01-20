@@ -35,6 +35,21 @@ function getOrCreateUid() {
   return uid;
 }
 
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const update = () => setIsMobile(mq.matches);
+
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
 /* ---------------- background component ---------------- */
 
 const StarryBackground = () => {
@@ -72,7 +87,7 @@ export default function Home() {
   const [isCopied, setIsCopied] = useState(false);
 
   const [lobby, setLobby] = useState<any | null>(null);
-
+  const isMobile = useIsMobile();
 
   const [lobbyPlayers, setLobbyPlayers] = useState<Player[]>([]);
 const [myPlayer, setMyPlayer] = useState<Player | null>(null);
@@ -334,9 +349,9 @@ const handleStartGame = useCallback(async () => {
 <PlayerDock>
   <ElectricAvatarPanel
     theme={electricTheme}// eller en fast farge hvis du vil
-    width={300}
-    height={200}
-    radius={60}
+    width={isMobile ? 150 : 300}
+    height={isMobile ? 150 : 200}
+    radius={isMobile ? 160 : 60}
     emberCount={120}
     speed={1.15}
     chaos={0.14}
@@ -346,7 +361,7 @@ const handleStartGame = useCallback(async () => {
       <Bar>
         <PlayerWrapper>
           <AvatarSkinScope skin={skin}>
-            <PlayerAvatar type={avatarType} size={100} />
+            <PlayerAvatar type={avatarType} size={isMobile ? 80 : 100} />
           </AvatarSkinScope>
 
 
@@ -535,8 +550,10 @@ const PlayerDock = styled.div`
   height: 200px;
   z-index: 10;
   @media (max-width: 768px) {
-    display: hidden;
-    visibility: hidden;
+    right: auto;
+    left:auto;
+    height: 150px;
+    width: 300px;
   }
 `;
 
@@ -555,6 +572,13 @@ const PlayerContainerInner = styled.div`
 
   /* ❌ fjern hvit border – electric tar over */
   border: none;
+  @media (max-width: 768px) {
+    gap: 0rem;
+    width: 300px;
+    height: 150px;
+    align-items: center;
+    border-radius: 0 0  160px 160px;
+  }
 `;
 
 
@@ -602,6 +626,10 @@ const VoteBadge = styled.div`
     height: 60px;
     object-fit: contain;
   }
+  @media (max-width: 768px) {
+    display: none;
+    visibility: hidden;
+  }
 `;
 
 const SettingsButton = styled.button`
@@ -621,6 +649,11 @@ const SettingsButton = styled.button`
   &:hover {
     transform: scale(1.1);
     box-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
+  }
+  @media (max-width: 768px) {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
   }
 `;
 

@@ -5,8 +5,8 @@ import { FaPlay, FaUserPlus, FaGamepad, FaSignOutAlt } from "react-icons/fa";
 import { useState, useEffect, useMemo } from "react";
 import type { Player } from "@/types/player";
 
-import { AstronautAvatar } from "./avatars/AstronautAvatar";
-import { RedAstronautAvatar } from "./avatars/RedAstronautAvatar";
+import { PlayerAvatar } from "@/components/avatars/PlayerAvatar";
+
 
 import { readSkin, readType, type AvatarSkin, type AvatarType } from "@/firebase/avatarPrefs";
 
@@ -77,7 +77,6 @@ export default function Lobby({
     return () => window.removeEventListener("imposter:avatarPrefs", onPrefs);
   }, [uid]);
 
-  const AvatarComponent = avatarType === "redAstronaut" ? RedAstronautAvatar : AstronautAvatar;
 
   const handleJoinGame = () => {
     if (inviteCode.trim() && onJoinGame) {
@@ -98,8 +97,9 @@ export default function Lobby({
           {players.map((player) => (
             <PlayerCard key={player.uid}>
               <SkinScope data-skin={player.uid === uid ? skin : "classic"}>
-                <AvatarComponent size={80} />
-              </SkinScope>
+  <PlayerAvatar type={player.uid === uid ? avatarType : "classicAstronaut"} size={80} />
+</SkinScope>
+
 
               <PlayerName className={player.playerId === 100 ? "host" : ""}>
                 {player.name}

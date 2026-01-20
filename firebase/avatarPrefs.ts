@@ -1,9 +1,9 @@
 export type AvatarSkin = "classic" | "midnight" | "mint" | "sunset" | "cyber";
-export type AvatarType = "classicAstronaut" | "redAstronaut";
+export type AvatarType = "classicAstronaut" | "redAstronaut" | "robot";
 export type ElectricTheme = "blue" | "pink" | "red" | "green" | "purple" | "white";
 
 const SKIN_VALID = ["classic", "midnight", "mint", "sunset", "cyber"] as const;
-const TYPE_VALID = ["classicAstronaut", "redAstronaut"] as const;
+const TYPE_VALID = ["classicAstronaut", "redAstronaut", "robot"] as const;
 const ELECTRIC_THEME_VALID = ["blue", "pink", "red", "green", "purple", "white"] as const;
 
 export const skinKey = (uid: string) => `imposter_skin:${uid}`;

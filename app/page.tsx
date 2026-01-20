@@ -11,8 +11,9 @@ import Themes, { WORD_DATA } from "@/components/Themes";
 import Game from "@/components/Game";
 import SettingsPanel from "@/components/settings";
 
-import { AstronautAvatar } from "@/components/avatars/AstronautAvatar";
-import { RedAstronautAvatar } from "@/components/avatars/RedAstronautAvatar";
+import { PlayerAvatar } from "@/components/avatars/PlayerAvatar";
+import AvatarSkinScope from "@/components/avatars/AvatarSkinScope";
+
 
 import type { Player } from "@/types/player";
 import { createLobby, joinLobby, listenToLobby, listenToLobbyPlayers, startGame, leaveLobby, closeLobby } from "@/firebase/lobby";
@@ -110,9 +111,6 @@ const [myPlayer, setMyPlayer] = useState<Player | null>(null);
     setElectricTheme(readElectricTheme(uid));
   }, [uid]);
 
-
-
-  const AvatarComponent = avatarType === "redAstronaut" ? RedAstronautAvatar : AstronautAvatar;
   
 useEffect(() => {
   const onPrefs = () => {
@@ -347,9 +345,11 @@ const handleStartGame = useCallback(async () => {
     <PlayerContainerInner>
       <Bar>
         <PlayerWrapper>
-          <SkinScope data-skin={skin}>
-            <AvatarComponent size={100} />
-          </SkinScope>
+          <AvatarSkinScope skin={skin}>
+            <PlayerAvatar type={avatarType} size={100} />
+          </AvatarSkinScope>
+
+
 
           <PlayerName>
             {myPlayer ? `${myPlayer.name} (You)` : "You (not in lobby)"}{" "}
@@ -699,46 +699,3 @@ const CloseBtn = styled.button`
   }
 `;
 
-const SkinScope = styled.div`
-  --hue: 0deg;
-  --sat: 1;
-  --bright: 1;
-  --contrast: 1;
-  display: grid;
-  place-items: center;
-
-  & > * {
-    filter: hue-rotate(var(--hue)) saturate(var(--sat)) brightness(var(--bright)) contrast(var(--contrast));
-  }
-
-  &[data-skin="classic"] {
-    --hue: 0deg;
-    --sat: 1;
-    --bright: 1;
-    --contrast: 1.02;
-  }
-  &[data-skin="midnight"] {
-    --hue: 210deg;
-    --sat: 1.25;
-    --bright: 0.92;
-    --contrast: 1.15;
-  }
-  &[data-skin="mint"] {
-    --hue: 135deg;
-    --sat: 1.15;
-    --bright: 1.05;
-    --contrast: 1.05;
-  }
-  &[data-skin="sunset"] {
-    --hue: 320deg;
-    --sat: 1.25;
-    --bright: 1.03;
-    --contrast: 1.08;
-  }
-  &[data-skin="cyber"] {
-    --hue: 260deg;
-    --sat: 1.45;
-    --bright: 0.98;
-    --contrast: 1.25;
-  }
-`;

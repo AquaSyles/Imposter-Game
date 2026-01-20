@@ -2,8 +2,9 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import styled, { css } from "styled-components";
-import { AstronautAvatar } from "@/components/avatars/AstronautAvatar";
-import { RedAstronautAvatar } from "@/components/avatars/RedAstronautAvatar";
+import { PlayerAvatar } from "@/components/avatars/PlayerAvatar";
+import AvatarSkinScope from "@/components/avatars/AvatarSkinScope";
+import { AVATAR_REGISTRY, AVATAR_TYPES } from "@/components/avatars/avatarRegistry";
 import ElectricAvatarPanel from "@/components/ElectricAvatarPanel";
 
 // ✅ BRUK KUN disse (ikke redefiner lokalt)
@@ -115,10 +116,10 @@ export default function SettingsPanel({
 
 
   const previewSize = 200;
-
-  const PreviewAvatar = useMemo(() => {
-    return avatarType === "redAstronaut" ? RedAstronautAvatar : AstronautAvatar;
-  }, [avatarType]);
+const skinLabel = useMemo(() => {
+  const found = SKINS.find((s) => s.id === skin);
+  return found?.name ?? skin;
+}, [skin]);
 
   return (
     <Wrap>
@@ -145,9 +146,10 @@ export default function SettingsPanel({
                   lineWidth={1.15}
                 >
                   <BigAvatarFrame>
-                    <SkinScope data-skin={skin}>
-                      <PreviewAvatar size={previewSize} />
-                    </SkinScope>
+                    <AvatarSkinScope skin={skin}>
+                      <PlayerAvatar type={avatarType} size={previewSize} />
+                    </AvatarSkinScope>
+
                   </BigAvatarFrame>
                 </ElectricAvatarPanel>
               </ElectricPreviewWrap>
@@ -182,7 +184,7 @@ export default function SettingsPanel({
               </InfoLine>
               <InfoLine>
                 <Label>Skin</Label>
-                <Value>{skin}</Value>
+                <Value>{skinLabel}</Value>
               </InfoLine>
               <Hint>Preview is large so you can see details.</Hint>
             </MiniInfo>
@@ -192,38 +194,26 @@ export default function SettingsPanel({
         <Card>
           <CardTitle>Choose Avatar</CardTitle>
           <ChoiceGrid>
-            <ChoiceButton
-              type="button"
-              $active={avatarType === "classicAstronaut"}
-              onClick={() => selectAvatarType("classicAstronaut")}
-            >
-              <ChoiceThumb>
-                <SkinScope data-skin={skin}>
-                  <AstronautAvatar size={84} />
-                </SkinScope>
-              </ChoiceThumb>
-              <ChoiceMeta>
-                <ChoiceName>Classic Astronaut</ChoiceName>
-                <ChoiceDesc>Your original avatar.</ChoiceDesc>
-              </ChoiceMeta>
-            </ChoiceButton>
+  {AVATAR_TYPES.map((t) => (
+    <ChoiceButton
+      key={t}
+      type="button"
+      $active={avatarType === t}
+      onClick={() => selectAvatarType(t)}
+    >
+      <ChoiceThumb>
+        <AvatarSkinScope skin={skin}>
+          <PlayerAvatar type={t} size={84} />
+        </AvatarSkinScope>
+      </ChoiceThumb>
+      <ChoiceMeta>
+        <ChoiceName>{AVATAR_REGISTRY[t].label}</ChoiceName>
+        <ChoiceDesc>Choose this avatar.</ChoiceDesc>
+      </ChoiceMeta>
+    </ChoiceButton>
+  ))}
+</ChoiceGrid>
 
-            <ChoiceButton
-              type="button"
-              $active={avatarType === "redAstronaut"}
-              onClick={() => selectAvatarType("redAstronaut")}
-            >
-              <ChoiceThumb>
-                <SkinScope data-skin={skin}>
-                  <RedAstronautAvatar size={84} />
-                </SkinScope>
-              </ChoiceThumb>
-              <ChoiceMeta>
-                <ChoiceName>Red Astronaut</ChoiceName>
-                <ChoiceDesc>Backpack + red details.</ChoiceDesc>
-              </ChoiceMeta>
-            </ChoiceButton>
-          </ChoiceGrid>
 
           <Divider />
 
@@ -232,9 +222,9 @@ export default function SettingsPanel({
             {SKINS.map((s) => (
               <SkinButton key={s.id} type="button" $active={skin === s.id} onClick={() => selectSkin(s.id)}>
                 <SkinThumb>
-                  <SkinScope data-skin={s.id}>
-                    <PreviewAvatar size={72} />
-                  </SkinScope>
+                  <AvatarSkinScope skin={skin}>
+                    <PlayerAvatar type={avatarType} size={72} />
+                  </AvatarSkinScope>
                 </SkinThumb>
                 <SkinMeta>
                   <SkinName>{s.name}</SkinName>
@@ -253,11 +243,12 @@ export default function SettingsPanel({
 
 const SKINS: Array<{ id: AvatarSkin; name: string; desc: string }> = [
   { id: "classic", name: "Classic", desc: "Original look." },
-  { id: "midnight", name: "Midnight", desc: "Darker + neon-ish." },
-  { id: "mint", name: "Mint", desc: "Fresh mint tones." },
-  { id: "sunset", name: "Sunset", desc: "Warm highlights." },
-  { id: "cyber", name: "Cyber", desc: "High-contrast vibe." },
+  { id: "midnight", name: "Midnight", desc: "Deep navy, eerie and cold." },
+  { id: "mint", name: "Super Trooper", desc: "Dominant red, bold and intense." },
+  { id: "sunset", name: "Midnight Sun", desc: "Warm Nordic glow: pinks, reds and gold." },
+  { id: "cyber", name: "Cyber", desc: "High-contrast neon vibe." },
 ];
+
 
 /* ---------------- styled ---------------- */
 
@@ -553,55 +544,4 @@ const SkinDesc = styled.div`
   color: #94a3b8;
   font-size: 0.9rem;
   line-height: 1.25rem;
-`;
-
-/* ---------------- SkinScope ---------------- */
-
-const SkinScope = styled.div`
-  --hue: 0deg;
-  --sat: 1;
-  --bright: 1;
-  --contrast: 1;
-
-  display: grid;
-  place-items: center;
-
-  & > * {
-    filter: hue-rotate(var(--hue)) saturate(var(--sat)) brightness(var(--bright)) contrast(var(--contrast));
-  }
-
-  &[data-skin="classic"] {
-    --hue: 0deg;
-    --sat: 1;
-    --bright: 1;
-    --contrast: 1.02;
-  }
-
-  &[data-skin="midnight"] {
-    --hue: 210deg;
-    --sat: 1.25;
-    --bright: 0.92;
-    --contrast: 1.15;
-  }
-
-  &[data-skin="mint"] {
-    --hue: 135deg;
-    --sat: 1.15;
-    --bright: 1.05;
-    --contrast: 1.05;
-  }
-
-  &[data-skin="sunset"] {
-    --hue: 320deg;
-    --sat: 1.25;
-    --bright: 1.03;
-    --contrast: 1.08;
-  }
-
-  &[data-skin="cyber"] {
-    --hue: 260deg;
-    --sat: 1.45;
-    --bright: 0.98;
-    --contrast: 1.25;
-  }
 `;

@@ -122,20 +122,22 @@ const Wrap = styled.div`
   height: var(--size, 60px);
   display: inline-block;
 
-  border: 2px solid #4f46e5;
+  border: 2px solid var(--ring, #4f46e5);
   border-radius: 50%;
   background: #1e293b;
-  box-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
-  transition: all 0.2s ease;
 
-  overflow: hidden;          /* ✅ klipper alt inni sirkelen */
-  position: relative;        /* ✅ for å plassere Stage absolutt */
+  box-shadow: 0 0 15px color-mix(in srgb, var(--ring, #4f46e5) 55%, transparent);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+
+  overflow: hidden;
+  position: relative;
 
   &:hover {
     transform: scale(1.05);
-    box-shadow: 0 0 20px rgba(99, 102, 241, 0.8);
+    box-shadow: 0 0 22px color-mix(in srgb, var(--ring, #4f46e5) 78%, transparent);
   }
 `;
+
 
 /**
  * Stage er 300x300 (original design) og vi SENTRERER den i Wrap.
@@ -150,6 +152,9 @@ const Stage = styled.div`
 
   transform: translate(-50%, -50%) scale(var(--scale, 0.2));
   transform-origin: center;
+
+  /* ✅ kun innhold farges, ringen påvirkes ikke */
+  filter: var(--avatarFilter, none);
 
   pointer-events: none;
 `;

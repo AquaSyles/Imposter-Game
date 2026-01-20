@@ -1,6 +1,5 @@
 "use client";
-import { AstronautAvatar } from "@/components/avatars/AstronautAvatar";
-import { RedAstronautAvatar } from "@/components/avatars/RedAstronautAvatar";
+
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import styled, { keyframes, css } from "styled-components";
 import type { Player } from "@/types/player";
@@ -8,201 +7,200 @@ import { submitChatWord } from "@/firebase/lobby";
 import { FaPaperPlane, FaBroadcastTower, FaLock } from "react-icons/fa";
 import type { AvatarSkin, AvatarType } from "@/firebase/avatarPrefs";
 
+import { PlayerAvatar } from "@/components/avatars/PlayerAvatar";
+
 type ChatLogItem = {
-    uid: string;
-    text: string;
-    round: number;
-    index: number;
-    at: number;
+  uid: string;
+  text: string;
+  round: number;
+  index: number;
+  at: number;
 };
 
 type ChatState = {
-    round: number;
-    turnIndex: number;
-    turnUid: string;
-    log: ChatLogItem[];
+  round: number;
+  turnIndex: number;
+  turnUid: string;
+  log: ChatLogItem[];
 };
 
 type Props = {
-    inviteCode: string;
-    myUid: string;
-    players: Player[];
-    chat: ChatState;
+  inviteCode: string;
+  myUid: string;
+  players: Player[];
+  chat: ChatState;
 
-    avatarTypeByUid?: Record<string, AvatarType>;
-    skinByUid?: Record<string, AvatarSkin>;
+  avatarTypeByUid?: Record<string, AvatarType>;
+  skinByUid?: Record<string, AvatarSkin>;
 
-    avatarSize?: number;
-    secretWord?: string | null;
-    isImposter?: boolean;
+  avatarSize?: number;
+  secretWord?: string | null;
+  isImposter?: boolean;
 };
 
-
-function AvatarByType({ type, size }: { type: AvatarType | undefined; size: number }) {
-    const Comp = type === "redAstronaut" ? RedAstronautAvatar : AstronautAvatar;
-    return <Comp size={size} />;
-}
-
-
 export default function ChatPanel({
-    inviteCode,
-    myUid,
-    players,
-    chat,
-    avatarTypeByUid = {},
-    skinByUid = {},
-    avatarSize = 42,
-    secretWord = null,
-    isImposter = false,
+  inviteCode,
+  myUid,
+  players,
+  chat,
+  avatarTypeByUid = {},
+  skinByUid = {},
+  avatarSize = 42,
+  secretWord = null,
+  isImposter = false,
 }: Props) {
+  const [input, setInput] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
 
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isMyTurn = chat.turnUid === myUid;
 
-    const [input, setInput] = useState("");
-    const [error, setError] = useState<string | null>(null);
-    const [sending, setSending] = useState(false);
+  const nameByUid = useMemo(() => {
+    const m = new Map<string, string>();
+    players.forEach((p) => m.set(p.uid, p.name));
+    return m;
+  }, [players]);
 
-    // Ref for auto-scrolling
-    const messagesEndRef = useRef<HTMLDivElement>(null);
+  const turnName = nameByUid.get(chat.turnUid) ?? "Unknown";
 
-    const isMyTurn = chat.turnUid === myUid;
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat.log]);
 
-    const nameByUid = useMemo(() => {
-        const m = new Map<string, string>();
-        players.forEach((p) => m.set(p.uid, p.name));
-        return m;
-    }, [players]);
+  const handleSend = async () => {
+    setError(null);
+    if (!isMyTurn || !input.trim()) return;
 
-    const turnName = nameByUid.get(chat.turnUid) ?? "Unknown";
+    const normalized = input.trim().toLowerCase();
+    const secret = (secretWord ?? "").trim().toLowerCase();
+    if (!isImposter && secret && normalized === secret) {
+      setError("Crew cannot transmit the secret word.");
+      return;
+    }
 
-    // Auto-scroll to bottom when chat log updates
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [chat.log]);
+    try {
+      setSending(true);
+      await submitChatWord(inviteCode, myUid, input.trim());
+      setInput("");
+    } catch (e: any) {
+      setError(e?.message ?? "Transmission failed");
+    } finally {
+      setSending(false);
+    }
+  };
 
-    const handleSend = async () => {
-        setError(null);
-        if (!isMyTurn || !input.trim()) return;
-        const normalized = input.trim().toLowerCase();
-        const secret = (secretWord ?? "").trim().toLowerCase();
+  const groupedMessages = useMemo(() => {
+    const groups: { type: "round" | "msg"; data: any }[] = [];
+    let currentRound = 0;
 
-        if (!isImposter && secret && normalized === secret) {
-            setError("Crew cannot transmit the secret word.");
-            return;
-        }
+    chat.log.forEach((msg) => {
+      if (msg.round !== currentRound) {
+        currentRound = msg.round;
+        groups.push({ type: "round", data: currentRound });
+      }
+      groups.push({ type: "msg", data: msg });
+    });
 
+    return groups;
+  }, [chat.log]);
 
-        try {
-            setSending(true);
-            await submitChatWord(inviteCode, myUid, input.trim());
-            setInput("");
-        } catch (e: any) {
-            setError(e?.message ?? "Transmission failed");
-        } finally {
-            setSending(false);
-        }
-    };
+  return (
+    <PanelWrap>
+      <HeaderBar $isMyTurn={isMyTurn}>
+        <StatusIcon>{isMyTurn ? <FaBroadcastTower /> : <FaLock />}</StatusIcon>
+        <StatusText>
+          {isMyTurn ? (
+            <span>
+              CHANNEL OPEN: <b>YOUR TURN</b>
+            </span>
+          ) : (
+            <span>
+              WAITING FOR: <b>{turnName.toUpperCase()}</b>
+            </span>
+          )}
+        </StatusText>
+        <RoundBadge>ROUND {chat.round}</RoundBadge>
+      </HeaderBar>
 
-    // Group messages by round for display
-    const groupedMessages = useMemo(() => {
-        const groups: { type: 'round' | 'msg', data: any }[] = [];
-        let currentRound = 0;
+      <ChatWindow>
+        {groupedMessages.length === 0 && (
+          <EmptyState>
+            <FaBroadcastTower size={40} />
+            <p>
+              Comms Link Established.
+              <br />
+              Waiting for first transmission...
+            </p>
+          </EmptyState>
+        )}
 
-        chat.log.forEach((msg) => {
-            if (msg.round !== currentRound) {
-                currentRound = msg.round;
-                groups.push({ type: 'round', data: currentRound });
-            }
-            groups.push({ type: 'msg', data: msg });
-        });
-        return groups;
-    }, [chat.log]);
+        {groupedMessages.map((item, idx) => {
+          if (item.type === "round") {
+            return (
+              <RoundDivider key={`r-${item.data}`}>
+                <span>Cycle {item.data} Initiated</span>
+              </RoundDivider>
+            );
+          }
 
-    return (
-        <PanelWrap>
-            {/* STATUS HEADER */}
-            <HeaderBar $isMyTurn={isMyTurn}>
-                <StatusIcon>
-                    {isMyTurn ? <FaBroadcastTower /> : <FaLock />}
-                </StatusIcon>
-                <StatusText>
-                    {isMyTurn ? (
-                        <span>CHANNEL OPEN: <b>YOUR TURN</b></span>
-                    ) : (
-                        <span>WAITING FOR: <b>{turnName.toUpperCase()}</b></span>
-                    )}
-                </StatusText>
-                <RoundBadge>ROUND {chat.round}</RoundBadge>
-            </HeaderBar>
+          const m = item.data as ChatLogItem;
+          const isMe = m.uid === myUid;
 
-            {/* CHAT AREA */}
-            <ChatWindow>
-                {groupedMessages.length === 0 && (
-                    <EmptyState>
-                        <FaBroadcastTower size={40} />
-                        <p>Comms Link Established.<br />Waiting for first transmission...</p>
-                    </EmptyState>
-                )}
+          const msgSkin = skinByUid?.[m.uid] ?? "classic";
+          const msgType = avatarTypeByUid?.[m.uid] ?? "classicAstronaut";
 
-                {groupedMessages.map((item, idx) => {
-                    if (item.type === 'round') {
-                        return <RoundDivider key={`r-${item.data}`}><span>Cycle {item.data} Initiated</span></RoundDivider>;
-                    }
+          return (
+            <MessageRow key={`${m.at}-${idx}`} $isMe={isMe}>
+              {/* LEFT avatar only for others */}
+              {!isMe && (
+                <AvatarCircle>
+                  <SkinScope data-skin={msgSkin}>
+                    <PlayerAvatar type={msgType} size={avatarSize} />
+                  </SkinScope>
+                </AvatarCircle>
+              )}
 
-                    const m = item.data as ChatLogItem;
-                    const isMe = m.uid === myUid;
+              <MessageBubble $isMe={isMe}>
+                {!isMe && <SenderName>{nameByUid.get(m.uid)}</SenderName>}
+                <MessageText>{m.text}</MessageText>
+              </MessageBubble>
 
-                    return (
-                        <MessageRow key={`${m.at}-${idx}`} $isMe={isMe}>
-                            {!isMe && (
-                                <AvatarCircle>
-                                    <SkinScope data-skin={skinByUid?.[m.uid] ?? "classic"}>
-                                        <AvatarByType type={avatarTypeByUid?.[m.uid]} size={avatarSize} />
-                                    </SkinScope>
-                                </AvatarCircle>
-                            )}
+              {/* RIGHT avatar only for me */}
+              {isMe && (
+                <AvatarCircle $isMe>
+                  <SkinScope data-skin={msgSkin}>
+                    <PlayerAvatar type={msgType} size={avatarSize} />
+                  </SkinScope>
+                </AvatarCircle>
+              )}
+            </MessageRow>
+          );
+        })}
 
-                            <MessageBubble $isMe={isMe}>
-                                {!isMe && <SenderName>{nameByUid.get(m.uid)}</SenderName>}
-                                <MessageText>{m.text}</MessageText>
-                            </MessageBubble>
+        <div ref={messagesEndRef} />
+      </ChatWindow>
 
-                            {isMe && (
-                                <AvatarCircle $isMe>
-                                    <SkinScope data-skin={skinByUid[m.uid] ?? "classic"}>
-                                        <AvatarByType type={avatarTypeByUid[m.uid] ?? "classicAstronaut"} size={avatarSize ?? 26} />
-                                    </SkinScope>
-                                </AvatarCircle>
-                            )}
-                        </MessageRow>
-                    );
-                })}
-                <div ref={messagesEndRef} />
-            </ChatWindow>
+      <InputArea>
+        <StyledInput
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder={isMyTurn ? "Transmit one word..." : `Waiting for ${turnName}...`}
+          disabled={!isMyTurn || sending}
+          autoFocus={isMyTurn}
+          maxLength={20}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSend();
+          }}
+        />
+        <SendButton onClick={handleSend} disabled={!isMyTurn || sending || !input.trim()}>
+          {sending ? "..." : <FaPaperPlane />}
+        </SendButton>
+      </InputArea>
 
-            {/* INPUT AREA */}
-            <InputArea>
-                <StyledInput
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder={isMyTurn ? "Transmit one word..." : `Waiting for ${turnName}...`}
-                    disabled={!isMyTurn || sending}
-                    autoFocus={isMyTurn}
-                    maxLength={20} // Prevent cheating with sentences
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSend();
-                    }}
-                />
-                <SendButton
-                    onClick={handleSend}
-                    disabled={!isMyTurn || sending || !input.trim()}
-                >
-                    {sending ? "..." : <FaPaperPlane />}
-                </SendButton>
-            </InputArea>
-
-            {error && <ErrorMessage>{error}</ErrorMessage>}
-        </PanelWrap>
-    );
+      {error && <ErrorMessage>{error}</ErrorMessage>}
+    </PanelWrap>
+  );
 }
 
 /* --- STYLES --- */

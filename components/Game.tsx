@@ -190,9 +190,16 @@ const skinByUid = useMemo(() => {
 )}
 
 
-  {phase === "vote" && (
-    <VotePanel inviteCode={inviteCode} myUid={myUid} players={players} votes={game?.votes ?? {}} />
-  )}
+{phase === "vote" && (
+  <VotePanel
+    inviteCode={inviteCode}
+    myUid={myUid}
+    players={players}
+    votes={game?.votes ?? {}}
+    chat={game?.chat}
+  />
+)}
+
 
   {phase === "result" && game?.result && game?.imposterUid && (
     <ResultPanel

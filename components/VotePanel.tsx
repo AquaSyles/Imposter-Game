@@ -71,14 +71,18 @@ export default function VotePanel({ inviteCode, myUid, players, votes, chat }: P
   // --- 2. REVIEW MODE (Standard start for alle) ---
   if (isReviewing) {
     if (!chat || !chat.log) {
-        return (
-            <VotedState>
-                <PulseIcon style={{color: '#6366f1'}}><FaHourglassHalf /></PulseIcon>
-                <VotedTitle>SYNCING LOGS...</VotedTitle>
-                <VotedSub>Retrieving mission data from mainframe.</VotedSub>
-            </VotedState>
-        );
-    }
+  // fallback: hopp rett til voting UI
+  return (
+    <PanelWrap>
+      <HeaderSection>
+        <AlertTitle>EMERGENCY MEETING</AlertTitle>
+        <Subtitle>Identify the Imposter. Choose carefully.</Subtitle>
+      </HeaderSection>
+      {/* ...resten av vote UI */}
+    </PanelWrap>
+  );
+}
+
 
     return (
       <PanelWrap>

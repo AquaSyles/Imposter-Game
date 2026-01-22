@@ -90,6 +90,60 @@ export function listenToLobby(inviteCode: string, callback: (lobby: DocumentData
     callback(snapshot.data());
   });
 }
+export function listenToLobbyPlayersActiveSession(
+  inviteCode: string,
+  callback: (players: Player[]) => void
+) {
+  if (!inviteCode) {
+    callback([]);
+    return () => {};
+  }
+
+  const lobbyRef = doc(db, "lobbies", inviteCode);
+
+  let unsubPlayers: (() => void) | null = null;
+
+  const unsubLobby = onSnapshot(lobbyRef, (lobbySnap) => {
+    if (!lobbySnap.exists()) {
+      callback([]);
+      if (unsubPlayers) unsubPlayers();
+      unsubPlayers = null;
+      return;
+    }
+
+    const lobby = lobbySnap.data() as any;
+    const activeSessionId: string | null = lobby?.sessionId ?? null;
+
+    if (!activeSessionId) {
+      callback([]);
+      if (unsubPlayers) unsubPlayers();
+      unsubPlayers = null;
+      return;
+    }
+
+    // Re-subscribe only if needed
+    if (unsubPlayers) unsubPlayers();
+
+    const qPlayers = query(
+      collection(db, "lobbies", inviteCode, "players"),
+      orderBy("joinedAt", "asc")
+    );
+
+    unsubPlayers = onSnapshot(qPlayers, (snapshot) => {
+      const players: Player[] = snapshot.docs
+        .map((d) => ({ uid: d.id, ...(d.data() as any) }))
+        .filter((p: any) => p.sessionId === activeSessionId);
+
+      callback(players);
+    });
+  });
+
+  return () => {
+    unsubLobby();
+    if (unsubPlayers) unsubPlayers();
+  };
+}
+
 export async function findReusableLobby(): Promise<string | null> {
   const q = query(
     collection(db, "lobbies"),

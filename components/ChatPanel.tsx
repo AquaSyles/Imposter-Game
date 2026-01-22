@@ -98,10 +98,10 @@ export default function ChatPanel({
       setInput("");
     } catch (e: any) {
       setError("UPLINK ERROR");
-    } finally {
-      setSending(false);
-    }
-    await setTyping(inviteCode, myUid, false).catch(() => {});
+   } finally {
+  setSending(false);
+  await setTyping(inviteCode, myUid, false).catch(() => {});
+}
 
   };
 

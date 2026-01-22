@@ -16,7 +16,17 @@ import AvatarSkinScope from "@/components/avatars/AvatarSkinScope";
 
 
 import type { Player } from "@/types/player";
-import { createLobby, joinLobby, listenToLobby, listenToLobbyPlayers, startGame, leaveLobby, closeLobby,updatePlayerPrefs } from "@/firebase/lobby";
+import {
+  createLobby,
+  joinLobby,
+  listenToLobby,
+  listenToLobbyPlayersActiveSession, // ✅
+  startGame,
+  leaveLobby,
+  closeLobby,
+  updatePlayerPrefs,
+} from "@/firebase/lobby";
+
 import { findReusableLobby } from "@/firebase/lobby";
 import { useTheme } from "@/components/ThemeContext";
 
@@ -88,7 +98,7 @@ export default function Home() {
 
   const [lobby, setLobby] = useState<any | null>(null);
   const isMobile = useIsMobile();
-const [expectedSessionId, setExpectedSessionId] = useState<string | null>(null);
+
   const [lobbyPlayers, setLobbyPlayers] = useState<Player[]>([]);
 const [myPlayer, setMyPlayer] = useState<Player | null>(null);
 
@@ -181,7 +191,7 @@ const setupLobby = useCallback(
   const code = forcedCode!;
   const sessionId = await createLobby(code, host);
 
-  setExpectedSessionId(sessionId);
+
   setInviteCode(code);
   setIsHost(true);
   return;
@@ -244,70 +254,48 @@ const handleCreateGame = useCallback(async () => {
 
  // listen players (session-safe)
 useEffect(() => {
-  if (!inviteCode || !expectedSessionId) {
+  if (!inviteCode) {
     setLobbyPlayers([]);
     return;
   }
 
-  const unsub = listenToLobbyPlayers(
-    inviteCode,
-    expectedSessionId,
-    setLobbyPlayers
-  );
-
+  const unsub = listenToLobbyPlayersActiveSession(inviteCode, setLobbyPlayers);
   return () => unsub();
-}, [inviteCode, expectedSessionId]);
+}, [inviteCode]);
+
 
 
 
   // listen lobby
-  useEffect(() => {
-    // Only proceed if inviteCode is a non-empty string with exactly 6 uppercase alphanumeric characters
-    if (!inviteCode || typeof inviteCode !== 'string' || !/^[A-Z0-9]{6}$/.test(inviteCode)) {
+ useEffect(() => {
+  if (!inviteCode || typeof inviteCode !== "string" || !/^[A-Z0-9]{6}$/.test(inviteCode)) {
+    setLobby(null);
+    setLobbyPlayers([]);
+    setIsHost(false);
+    return;
+  }
+
+  const unsub = listenToLobby(inviteCode, (l) => {
+    if (!l || l.status === "closed") {
+      setShowThemes(false);
+      setInviteCode("");
       setLobby(null);
       setLobbyPlayers([]);
       setIsHost(false);
       return;
     }
 
-const unsub = listenToLobby(inviteCode, (l) => {
-  if (!l) {
-    setShowThemes(false);
-    setInviteCode("");
-    setLobby(null);
-    setLobbyPlayers([]);
-    setIsHost(false);
-    setExpectedSessionId(null);
-    return;
-  }
-
-  // ✅ IGNORER gamle snapshots (cache / gammel lobby)
-  if (expectedSessionId && l.sessionId !== expectedSessionId) {
-    return;
-  }
-
-  // Nå er det trygt å håndtere status
-  if (l.status === "closed") {
-    setShowThemes(false);
-    setInviteCode("");
-    setLobby(null);
-    setLobbyPlayers([]);
-    setIsHost(false);
-    setExpectedSessionId(null);
-    return;
-  }
-
-  setLobby(l);
-});
-
+    setLobby(l);
+  });
 
   return () => unsub();
 }, [inviteCode]);
 
+
   useEffect(() => {
   if (!inviteCode) return;
   localStorage.setItem("imposter_last_lobby", inviteCode);
-}, [inviteCode, expectedSessionId]);
+}, [inviteCode]);
 
 
   // merge + dedupe players

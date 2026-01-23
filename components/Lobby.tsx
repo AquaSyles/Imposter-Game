@@ -1,7 +1,7 @@
 "use client";
 
 import styled from "styled-components";
-import { FaPlay, FaUserPlus, FaGamepad, FaSignOutAlt } from "react-icons/fa";
+import { FaArrowRight, FaUserPlus, FaGamepad, FaSignOutAlt } from "react-icons/fa";
 import { useState, useEffect, useMemo } from "react";
 import type { Player } from "@/types/player";
 
@@ -53,7 +53,7 @@ interface LobbyProps {
   // room actions
   onContinueToThemes?: () => void;
   onExitLobby?: () => void;
-
+  onHyperspeed?: (active: boolean) => void;
   // shared
   players: Player[];
   isHost?: boolean;
@@ -68,6 +68,7 @@ export default function Lobby({
   onCreateGame,
   onContinueToThemes,
   onExitLobby,
+  onHyperspeed,
   isHost = false,
 }: LobbyProps) {
   const uid = useMemo(() => getOrCreateUid(), []);
@@ -95,13 +96,22 @@ export default function Lobby({
     return () => window.removeEventListener("imposter:avatarPrefs", onPrefs);
   }, [uid]);
 
+  useEffect(() => {
+  if (mode !== "menu") return;
+  if (showJoinForm) onHyperspeed?.(true);
+}, [mode, showJoinForm, onHyperspeed]);
 
-  const handleJoinGame = () => {
-    if (inviteCode.trim() && onJoinGame) {
-      onJoinGame(inviteCode.trim().toUpperCase());
-      setShowJoinForm(false);
-    }
-  };
+
+
+  const handleJoinGame = async () => {
+  if (!inviteCode.trim() || !onJoinGame) return;
+
+  // slå av FØR du bytter view / state
+  onHyperspeed?.(false);
+
+  onJoinGame(inviteCode.trim().toUpperCase());
+  setShowJoinForm(false);
+};
  
   return (
     <LobbyContainer>
@@ -139,7 +149,12 @@ export default function Lobby({
           {!showJoinForm ? (
             <>
               <Button
-                onClick={() => onCreateGame?.()}
+                onMouseEnter={() => onHyperspeed?.(true)}
+                onMouseLeave={() => onHyperspeed?.(false)}
+                onClick={() => {
+                  onHyperspeed?.(false);
+                  onCreateGame?.();
+                }}
                 $variant="primary"
                 style={{ width: "100%", justifyContent: "center" }}
               >
@@ -149,6 +164,8 @@ export default function Lobby({
               <Divider>OR</Divider>
 
               <Button
+                onMouseEnter={() => onHyperspeed?.(true)}
+                onMouseLeave={() => onHyperspeed?.(false)}
                 onClick={() => setShowJoinForm(true)}
                 $variant="secondary"
                 style={{ width: "100%", justifyContent: "center" }}
@@ -171,7 +188,7 @@ export default function Lobby({
               </div>
               <div style={{ display: "flex", gap: "1rem", width: "100%" }}>
                 <Button
-                  onClick={handleJoinGame}
+                   onClick={handleJoinGame}
                   $variant="primary"
                   disabled={!inviteCode.trim()}
                   style={{ flex: 1 }}
@@ -198,8 +215,9 @@ export default function Lobby({
             onClick={() => onExitLobby?.()}
             $variant="secondary"
             style={{ justifyContent: "center" }}
+    
           >
-            <FaSignOutAlt /> Exit Lobby
+            <FaSignOutAlt style={{ rotate: "180deg" }} /> Exit Lobby
           </Button>
 
           {isHost && (
@@ -208,8 +226,9 @@ export default function Lobby({
               $variant="primary"
               style={{ justifyContent: "center" }}
               disabled={players.length < 1}
+         
             >
-              <FaPlay /> Continue to Themes
+              Pick Themes <FaArrowRight />
             </Button>
           )}
         </RoomActions>
@@ -297,6 +316,10 @@ const Button = styled.button<{ $variant?: "primary" | "secondary" }>`
   &:hover {
     opacity: 0.92;
     transform: translateY(-2px);
+    & > svg {
+      transform: translateX(4px);
+      transition: transform 0.2s ease-out;
+    }
   }
 
   &:disabled {

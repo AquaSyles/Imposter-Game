@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import styled, { css, keyframes } from 'styled-components';
-import { FaPlay } from 'react-icons/fa';
+import {SiSpaceship} from 'react-icons/si';
 
 const pulse = keyframes`
   0% { transform: scale(1); }
@@ -80,12 +80,12 @@ const IconContainer = styled.span<{ $isHovered: boolean }>`
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
+  
   transition: all 0.3s ease;
 
   svg {
     transition: transform 0.3s ease;
-    ${({ $isHovered }: { $isHovered: boolean }) => $isHovered && 'transform: rotate(90deg);'}
+    ${({ $isHovered }: { $isHovered: boolean }) => $isHovered && 'transform: translateY(-15px);'}
   }
 `;
 
@@ -115,7 +115,7 @@ const PlayButton = ({
     >
       <ButtonText>Play</ButtonText>
       <IconContainer $isHovered={isHovered}>
-        <FaPlay size={20} />
+        <SiSpaceship  size={20} style={{ rotate: '90deg' }} />
       </IconContainer>
     </PlayButtonContainer>
   );

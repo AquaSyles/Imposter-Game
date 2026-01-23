@@ -88,6 +88,8 @@ const typingUid = phase === "chat" ? (game as any)?.chat?.typingUid ?? null : nu
 
 
   const [cardFlipped, setCardFlipped] = useState(false);
+  const [miniHidden, setMiniHidden] = useState(false);
+
 
   const avatarTypeByUid = useMemo(() => {
   const out: Record<string, AvatarType> = {};
@@ -156,26 +158,40 @@ const skinByUid = useMemo(() => {
 {phase === "chat" && game?.chat && (
   <>
     {showMiniCardInChatMobile && (
-      <RoleMiniCard $isImposter={isImposter} $compact>
-        <RoleMiniTop>
-          <RoleMiniTag>{"ROLE -"}</RoleMiniTag>
-          <RoleMiniTitle>{isImposter ? "IMPOSTER" : "CREW"}</RoleMiniTitle>
-        </RoleMiniTop>
+      <RoleMiniCard
+  $isImposter={isImposter}
+  $compact
+  $hidden={miniHidden}
+  onClick={() => setMiniHidden((v) => !v)}
+  role="button"
+  aria-label={miniHidden ? "Show role info" : "Hide role info"}
+>
+  <RoleMiniHeaderRow>
+    <RoleMiniTop>
+      <RoleMiniTag>{"ROLE -"}</RoleMiniTag>
+      <RoleMiniTitle>{isImposter ? "IMPOSTER" : "CREW"}</RoleMiniTitle>
+    </RoleMiniTop>
 
-        <RoleMiniBody>
-          {isImposter ? (
-            <>
-              <MiniLabel>Hint - </MiniLabel>
-              <MiniValue>{hint ?? "Blend in"}</MiniValue>
-            </>
-          ) : (
-            <>
-              <MiniLabel>Word - </MiniLabel>
-              <MiniValue>{word ?? "???"}</MiniValue>
-            </>
-          )}
-        </RoleMiniBody>
-      </RoleMiniCard>
+    <MiniToggle>
+      {miniHidden ? "UNHIDE" : "HIDE"}
+    </MiniToggle>
+  </RoleMiniHeaderRow>
+
+  <RoleMiniBody>
+    {isImposter ? (
+      <>
+        <MiniLabel>Hint - </MiniLabel>
+        <MiniValue>{hint ?? "Blend in"}</MiniValue>
+      </>
+    ) : (
+      <>
+        <MiniLabel>Word - </MiniLabel>
+        <MiniValue>{word ?? "???"}</MiniValue>
+      </>
+    )}
+  </RoleMiniBody>
+</RoleMiniCard>
+
     )}
 
     {/* ✅ MOBILE: Crew + Chat i samme “attached” modul */}
@@ -293,26 +309,45 @@ const skinByUid = useMemo(() => {
   {!(isMobile && phase === "chat") && (
     <>
       {phase !== "reveal" && !showMiniCardInChatMobile && (
-        <RoleMiniCard $isImposter={isImposter} $compact>
-        <RoleMiniTop>
-          <RoleMiniTag>{"ROLE -"}</RoleMiniTag>
-          <RoleMiniTitle>{isImposter ? "IMPOSTER" : "CREW"}</RoleMiniTitle>
-        </RoleMiniTop>
+       <RoleMiniCard
+  $isImposter={isImposter}
+  $compact
+  $hidden={miniHidden}
+  onClick={() => setMiniHidden((v) => !v)}
+  role="button"
+  aria-label={miniHidden ? "Show role info" : "Hide role info"}
+>
+  <RoleMiniHeaderRow>
+    <RoleMiniTop>
+      <RoleMiniTag>{"ROLE -"}</RoleMiniTag>
+      <RoleMiniTitle>{isImposter ? "IMPOSTER" : "CREW"}</RoleMiniTitle>
+    </RoleMiniTop>
 
-        <RoleMiniBody>
-          {isImposter ? (
-            <>
-              <MiniLabel>Hint - </MiniLabel>
-              <MiniValue>{hint ?? "Blend in"}</MiniValue>
-            </>
-          ) : (
-            <>
-              <MiniLabel>Word - </MiniLabel>
-              <MiniValue>{word ?? "???"}</MiniValue>
-            </>
-          )}
-        </RoleMiniBody>
-      </RoleMiniCard>
+    <MiniToggle>
+      {miniHidden ? "SHOW ROLE" : "HIDE ROLE"}
+    </MiniToggle>
+  </RoleMiniHeaderRow>
+
+  <RoleMiniBody>
+    {miniHidden ? (
+      <HiddenPlaceholder>
+        <MiniLabel>Hidden</MiniLabel>
+        <MiniValue>••••••</MiniValue>
+      </HiddenPlaceholder>
+    ) : isImposter ? (
+      <>
+        <MiniLabel>Hint - </MiniLabel>
+        <MiniValue>{hint ?? "Blend in"}</MiniValue>
+      </>
+    ) : (
+      <>
+        <MiniLabel>Word - </MiniLabel>
+        <MiniValue>{word ?? "???"}</MiniValue>
+      </>
+    )}
+  </RoleMiniBody>
+</RoleMiniCard>
+
       )}
 
       <CrewManifest>
@@ -566,19 +601,48 @@ const RoleTitle = styled.h2`
   margin: 0 0 1.5rem 0;
   letter-spacing: 1px;
 `;
-const RoleMiniCard = styled.div<{ $isImposter: boolean; $compact?: boolean }>`
+const RoleMiniCard = styled.div<{
+  $isImposter: boolean;
+  $compact?: boolean;
+  $hidden?: boolean;
+}>`
   width: 100%;
   margin-bottom: 1rem;
   border-radius: 16px;
   padding: 1rem;
-  background: ${({ $isImposter }) =>
-    $isImposter
+
+  /* ✅ NORMAL / ROLE-BASED BAKGRUNN */
+  background: ${({ $isImposter, $hidden }) =>
+    $hidden
+      ? "linear-gradient(145deg, rgba(55, 65, 81, 0.75), rgba(31, 41, 55, 0.75))"
+      : $isImposter
       ? "linear-gradient(145deg, rgba(69, 10, 10, 0.75), rgba(127, 29, 29, 0.55))"
       : "linear-gradient(145deg, rgba(12, 74, 110, 0.75), rgba(3, 105, 161, 0.55))"};
-  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  border: 1px solid
+    ${({ $hidden }) =>
+      $hidden ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.08)"};
+
   backdrop-filter: blur(10px);
 
-    ${({ $compact }) =>
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.25s ease, filter 0.25s ease;
+
+  /* ✅ NÅ BLURRER VI HELE INNHOLDET */
+  ${({ $hidden }) =>
+    $hidden &&
+    css`
+      filter: saturate(0.2) brightness(0.9);
+
+      ${RoleMiniTop},
+      ${RoleMiniBody} {
+        filter: blur(6px);
+        opacity: 0.8;
+      }
+    `}
+
+  ${({ $compact }) =>
     $compact &&
     css`
       padding: 0.75rem;
@@ -599,7 +663,31 @@ const RoleMiniCard = styled.div<{ $isImposter: boolean; $compact?: boolean }>`
         font-size: 1rem;
       }
     `}
+`;
 
+
+const RoleMiniHeaderRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+`;
+
+const MiniToggle = styled.div`
+  font-size: 0.65rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.18);
+  color: rgba(255,255,255,0.85);
+`;
+
+const HiddenPlaceholder = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 `;
 
 const RoleMiniTop = styled.div`

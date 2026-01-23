@@ -60,27 +60,68 @@ function useIsMobile(breakpoint = 768) {
   return isMobile;
 }
 
-/* ---------------- background component ---------------- */
 
-const StarryBackground = () => {
-  const [stars, setStars] = useState<Array<{ id: number; top: string; left: string; delay: string }>>([]);
+/* ---------------- background component ---------------- */
+type StarT = {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
+  size: number;
+  speed: number;
+  delay: number;
+  rot: number; // ✅
+};
+
+const StarryBackground = ({ hyperspeed = false }: { hyperspeed?: boolean }) => {
+  const [stars, setStars] = useState<StarT[]>([]);
 
   useEffect(() => {
-    const starsArray = Array(100)
-      .fill(0)
-      .map((_, i) => ({
-        id: i,
-        top: `${Math.random() * 100}%`,
-        left: `${Math.random() * 100}%`,
-        delay: `${Math.random() * 3}s`,
-      }));
-    setStars(starsArray);
+    const build = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+
+      const next: StarT[] = Array.from({ length: 220 }, (_, i) => {
+        const depth = Math.random();
+
+        const x = (Math.random() - 0.5) * w * 1.6;
+        const y = (Math.random() - 0.5) * h * 1.6;
+        const rot = Math.atan2(y, x) * (180 / Math.PI);
+
+        return {
+          id: i,
+          x,
+          y,
+          rot,
+          z: -800 - depth * 1200,
+          size: 1 + depth * 2.5,
+          speed: 2 + depth * 4 + Math.random() * 2,
+          delay: Math.random() * 3,
+        };
+      });
+
+      setStars(next);
+    };
+
+    build();
+    window.addEventListener("resize", build);
+    return () => window.removeEventListener("resize", build);
   }, []);
 
   return (
-    <StarBackground>
-      {stars.map((star) => (
-        <Star key={star.id} $top={star.top} $left={star.left} $delay={star.delay} />
+    <StarBackground $hyperspeed={hyperspeed}>
+      {stars.map((s) => (
+        <Star
+          key={s.id}
+          $x={s.x}
+          $y={s.y}
+          $z={s.z}
+          $size={s.size}
+          $speed={s.speed}
+          $delay={s.delay}
+          $rot={s.rot}          // ✅ VIKTIG
+          $hyper={hyperspeed}   // ✅ VIKTIG
+        />
       ))}
     </StarBackground>
   );
@@ -91,6 +132,7 @@ const StarryBackground = () => {
 export default function Home() {
   const uid = useMemo(() => getOrCreateUid(), []);
   const { selectedThemeId } = useTheme();
+  const [hyperspeed, setHyperspeed] = useState(false);
 
   const [showThemes, setShowThemes] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
@@ -341,8 +383,8 @@ const handleStartGame = useCallback(async () => {
     if (!examples.includes(pick)) examples.push(pick);
   }
 
-  const imposterHint = `Theme: ${themeId}. Example words: ${examples.join(", ")}. Secret word length: ${randomWord.length}.`;
-
+  const imposterHint = `THEME: ${themeId}.  WORD LENGTH: ${randomWord.length}.`;
+  // Fjernet Exampleword for mer vanskelighetsgrad: Example words: ${examples.join(", ")}.
   // ✅ Start game med hint
   await startGame(inviteCode, myPlayer.uid, randomWord, themeId, imposterHint);
 }, [inviteCode, myPlayer, lobby]);
@@ -350,7 +392,7 @@ const handleStartGame = useCallback(async () => {
 
   return (
     <>
-      <StarryBackground />
+      <StarryBackground hyperspeed={hyperspeed} />
 
       <PageContainer>
         <GlowEffect />
@@ -433,6 +475,9 @@ const handleStartGame = useCallback(async () => {
     players={orderedPlayers}
     onJoinGame={handleJoinGame}
     onCreateGame={handleCreateGame}
+    onHyperspeed={(v) => setHyperspeed(v)}
+
+    
   />
 ) : showThemes ? (
   // ✅ THEMES
@@ -508,36 +553,108 @@ const PageContainer = styled.div`
   }
 `;
 
-const StarBackground = styled.div`
+const StarBackground = styled.div<{ $hyperspeed?: boolean }>`
   position: fixed;
   inset: 0;
-  background: linear-gradient(135deg, #0f172a, #1e293b);
-  z-index: 1;
+  background: radial-gradient(circle at center, #020617, #000);
+  perspective: 800px;
   overflow: hidden;
+  z-index: 0;
+
+  ${({ $hyperspeed }) =>
+    $hyperspeed &&
+    `
+      filter: brightness(1.08) contrast(1.05);
+    `}
 `;
 
-const Star = styled.div<{ $top: string; $left: string; $delay: string }>`
-  position: absolute;
-  top: ${({ $top }) => $top};
-  left: ${({ $left }) => $left};
-  width: 2px;
-  height: 2px;
-  background: white;
-  border-radius: 50%;
-  animation: twinkle 3s infinite;
-  animation-delay: ${({ $delay }) => $delay};
-  opacity: 0.7;
 
-  @keyframes twinkle {
-    0%,
-    100% {
-      opacity: 0.2;
-    }
-    50% {
-      opacity: 1;
-    }
+const fly = keyframes`
+  from {
+    transform: translate3d(var(--x), var(--y), var(--z)) scale(var(--size));
+    opacity: 0;
+  }
+  10% { opacity: 1; }
+  to {
+    transform: translate3d(
+      calc(var(--x) * 1.6),
+      calc(var(--y) * 1.6),
+      300px
+    ) scale(calc(var(--size) * 1.5));
+    opacity: 0;
   }
 `;
+
+const flyHyper = keyframes`
+  from {
+    transform:
+      translate3d(var(--x), var(--y), var(--z))
+      rotate(var(--rot))
+      scale(var(--size))
+      scaleX(0.35);
+    opacity: 0;
+  }
+
+  8% {
+    opacity: 1;
+  }
+
+  to {
+    transform:
+      translate3d(
+        calc(var(--x) * 2.2),
+        calc(var(--y) * 2.2),
+        650px
+      )
+      rotate(var(--rot))
+      scale(var(--size))
+      scaleX(22);
+    opacity: 0;
+  }
+`;
+
+
+
+
+
+
+const Star = styled.div<{
+  $x: number;
+  $y: number;
+  $z: number;
+  $size: number;
+  $speed: number;
+  $delay: number;
+  $rot: number;
+  $hyper?: boolean;
+}>`
+  position: absolute;
+  left: 50%;
+  top: 50%;
+
+  width: 2px;
+  height: 2px;
+  border-radius: 999px;
+  background: white;
+
+  --x: ${({ $x }) => `${$x}px`};
+  --y: ${({ $y }) => `${$y}px`};
+  --z: ${({ $z }) => `${$z}px`};
+  --size: ${({ $size }) => $size};
+  --rot: ${({ $rot }) => `${$rot}deg`}; /* ✅ MUST */
+
+  transform-origin: center;
+  will-change: transform, opacity;
+
+  animation: ${({ $hyper }) => ($hyper ? flyHyper : fly)}
+    ${({ $hyper, $speed }) => ($hyper ? Math.max(0.35, $speed * 0.18) : $speed)}s
+    linear infinite;
+
+  animation-delay: ${({ $delay }) => $delay}s;
+`;
+
+
+
 
 const Title = styled.h1`
   font-size: 3.5rem;

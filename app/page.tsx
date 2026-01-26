@@ -27,11 +27,12 @@ import {
   updatePlayerPrefs,
 } from "@/firebase/lobby";
 
-import { findReusableLobby } from "@/firebase/lobby";
+import { findReusableLobby, updatePlayerName } from "@/firebase/lobby";
 import { useTheme } from "@/components/ThemeContext";
 
-import { readSkin, readType, readElectricTheme, type AvatarSkin, type AvatarType } from "@/firebase/avatarPrefs";
-import { ElectricTheme } from "@/types/theme";
+import { readSkin, readType, readElectricTheme, readName, type AvatarSkin, type AvatarType } from "@/firebase/avatarPrefs";
+import type { ElectricTheme } from "@/firebase/avatarPrefs";
+
 
 /* ---------------- helpers ---------------- */
 
@@ -204,18 +205,21 @@ useEffect(() => {
   };
 
 const setupLobby = useCallback(
+  
   async (isNewGame = false, forcedCode?: string) => {
     // ✅ alltid sørg for at player har korrekt uid
     let player: Player;
 
+    const savedName = readName(uid);
+  const fallbackName = `Player ${Math.floor(100 + Math.random() * 900)}`;
     if (!myPlayer || !myPlayer.uid) {
       player = {
   uid,
   playerId: 0,
-  name: `Player ${Math.floor(100 + Math.random() * 900)}`,
+  name: savedName || fallbackName,
   avatar: "astronaut",
-  skin,                 // ✅ bruk valgt skin
-  avatarType,           // ✅ bruk valgt avatarType
+  skin,
+  avatarType,
   joinedAt: Date.now(),
 };
 
@@ -305,7 +309,20 @@ useEffect(() => {
   return () => unsub();
 }, [inviteCode]);
 
+useEffect(() => {
+  if (!inviteCode || !myPlayer?.uid) return;
 
+  const savedName = readName(uid);
+  if (!savedName) return;
+
+  // unngå spam dersom samme navn
+  if (myPlayer?.name === savedName) return;
+
+  updatePlayerName(inviteCode, myPlayer.uid, savedName).catch(console.error);
+
+  // også oppdater local state så dock viser riktig direkte
+  setMyPlayer((p) => (p ? { ...p, name: savedName } : p));
+}, [inviteCode, myPlayer?.uid, uid, myPlayer?.name]);
 
 
   // listen lobby
@@ -859,6 +876,56 @@ const ModalOverlay = styled.div`
   display: grid;
   place-items: center;
   padding: 1rem;
+  ::-webkit-scrollbar {
+  width: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+  border-radius: 10px;
+  margin: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #475569 0%, #334155 100%);
+  border-radius: 10px;
+  border: 2px solid rgba(15, 23, 42, 0.4);
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #64748b 0%, #475569 100%);
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.3);
+  pointer-events: none;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%);
+}
+
+/* Custom Scrollbar - Horizontal */
+::-webkit-scrollbar:horizontal {
+  height: 12px;
+}
+
+::-webkit-scrollbar-track:horizontal {
+  background: rgba(15, 23, 42, 0.4);
+  border-radius: 10px;
+  margin: 4px;
+}
+
+::-webkit-scrollbar-thumb:horizontal {
+  background: linear-gradient(90deg, #475569 0%, #334155 100%);
+  border-radius: 10px;
+  border: 2px solid rgba(15, 23, 42, 0.4);
+}
+
+::-webkit-scrollbar-thumb:horizontal:hover {
+  background: linear-gradient(90deg, #64748b 0%, #475569 100%);
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.3);
+  pointer-events: pointer;
+}
+
 `;
 
 const ModalCard = styled.div`

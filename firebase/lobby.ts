@@ -179,7 +179,10 @@ export async function setLobbyTheme(inviteCode: string, hostUid: string, themeId
     );
   });
 }
-
+export async function updatePlayerName(inviteCode: string, uid: string, name: string) {
+  const ref = doc(db, "lobbies", inviteCode, "players", uid);
+  await updateDoc(ref, { name });
+}
 export async function updatePlayerPrefs(
   inviteCode: string,
   uid: string,

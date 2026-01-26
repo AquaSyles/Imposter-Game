@@ -7,7 +7,6 @@ import AvatarSkinScope from "@/components/avatars/AvatarSkinScope";
 import { AVATAR_REGISTRY, AVATAR_TYPES } from "@/components/avatars/avatarRegistry";
 import ElectricAvatarPanel from "@/components/ElectricAvatarPanel";
 
-// ✅ BRUK KUN disse (ikke redefiner lokalt)
 import {
   readSkin,
   readType,
@@ -15,12 +14,12 @@ import {
   writeSkin,
   writeType,
   writeElectricTheme,
+  readName,
+  writeName, 
   type AvatarSkin,
   type AvatarType,
   type ElectricTheme,
 } from "@/firebase/avatarPrefs";
-
-/* ---------------- props ---------------- */
 
 type SettingsPanelProps = {
   uid: string;
@@ -30,33 +29,39 @@ type SettingsPanelProps = {
   onAvatarTypeChange?: (type: AvatarType) => void;
 };
 
-/* ---------------- electric theme (NYTT, separat fra skin) ---------------- */
+const ELECTRIC_THEMES: ElectricTheme[] = [
+  "blue",
+  "pink",
+  "red",
+  "green",
+  "purple",
+  "white",
+  "hotPink",
+  "deepBlue",
+  "blackEmits",
+  "deepGreen",
+];
 
-
-const ELECTRIC_THEMES: ElectricTheme[] = ["blue", "pink", "red", "green", "purple","white" ];
-
-const ELECTRIC_THEME_LABEL: Record<ElectricTheme, string> = {
-  blue: "Blue",
-  pink: "Pink",
-  red: "Red",
-  green: "Green",
-  purple: "Purple",
-  white: "White",
+const ELECTRIC_THEME_DATA: Record<ElectricTheme, { label: string; color: string }> = {
+  blue: { label: "Ocean", color: "#9CD6FF" },
+  pink: { label: "Sakura", color: "#FFB3E6" },
+  red: { label: "Crimson", color: "#FF7A7A" },
+  green: { label: "Mint", color: "#6FFFC7" },
+  purple: { label: "Twilight", color: "#D7B3FF" },
+  white: { label: "Pure", color: "#FFFFFF" },
+  hotPink: { label: "Hot Pink", color: "#FF69B4" },
+  deepBlue: { label: "Deep Blue", color: "#1E3A8A" },
+  blackEmits: { label: "Black Emits", color: "#1A1A1A" },
+  deepGreen: { label: "Deep Green", color: "#064E3B" },
 };
 
-const ELECTRIC_THEME_SWATCH: Record<ElectricTheme, string> = {
-  blue: "#9CD6FF",
-  pink: "#FFB3E6",
-  red: "#FF7A7A",
-  green: "#6FFFC7",
-  purple: "#D7B3FF",
-  white: "#FFFFFF",
-};
-
-
-
-
-/* ---------------- component ---------------- */
+const SKINS: Array<{ id: AvatarSkin; name: string; desc: string }> = [
+  { id: "classic", name: "Classic", desc: "Original look." },
+  { id: "midnight", name: "Midnight", desc: "Deep navy, eerie and cold." },
+  { id: "mint", name: "Super Trooper", desc: "Dominant red, bold and intense." },
+  { id: "sunset", name: "Midnight Sun", desc: "Warm Nordic glow: pinks, reds and gold." },
+  { id: "cyber", name: "Cyber", desc: "High-contrast neon vibe." },
+];
 
 export default function SettingsPanel({
   uid,
@@ -67,24 +72,22 @@ export default function SettingsPanel({
 }: SettingsPanelProps) {
   const [skin, setSkin] = useState<AvatarSkin>("classic");
   const [avatarType, setAvatarType] = useState<AvatarType>("classicAstronaut");
-
-  // ✅ NYTT: electric-fargevalg for border (ikke skin)
   const [electricTheme, setElectricTheme] = useState<ElectricTheme>("blue");
+  const [displayName, setDisplayName] = useState("");
 
- useEffect(() => {
-  setSkin(initialSkin ?? readSkin(uid));
-  setAvatarType(initialAvatarType ?? readType(uid));
-  setElectricTheme(readElectricTheme(uid));
-}, [uid, initialSkin, initialAvatarType]);
+  useEffect(() => {
+    setSkin(initialSkin ?? readSkin(uid));
+    setAvatarType(initialAvatarType ?? readType(uid));
+    setElectricTheme(readElectricTheme(uid));
+    setDisplayName(readName(uid) || "");
 
+  }, [uid, initialSkin, initialAvatarType]);
 
   const selectSkin = useCallback(
     (next: AvatarSkin) => {
       setSkin(next);
       writeSkin(uid, next);
       onSkinChange?.(next);
-
-      // 🔥 notify the app
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("imposter:avatarPrefs"));
       }
@@ -97,8 +100,6 @@ export default function SettingsPanel({
       setAvatarType(next);
       writeType(uid, next);
       onAvatarTypeChange?.(next);
-
-      // 🔥 notify the app
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("imposter:avatarPrefs"));
       }
@@ -106,442 +107,447 @@ export default function SettingsPanel({
     [uid, onAvatarTypeChange]
   );
 
- const selectElectricTheme = useCallback(
+  const selectElectricTheme = useCallback(
   (next: ElectricTheme) => {
     setElectricTheme(next);
-    writeElectricTheme(uid, next); // ✅ bruker shared pref
+    writeElectricTheme(uid, next);
+
+    // ✅ slik Home plukker opp endringen direkte
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("imposter:avatarPrefs"));
+    }
   },
   [uid]
 );
-
-
-  const previewSize = 200;
-const skinLabel = useMemo(() => {
-  const found = SKINS.find((s) => s.id === skin);
-  return found?.name ?? skin;
-}, [skin]);
+const sanitizeName = (raw: string) =>
+  raw
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")        // remove zero-width
+    .replace(/[^\p{L}\p{N}\s_-]/gu, "")           // keep letters/numbers/space/_-
+    .trim()
+    .slice(0, 10);
 
   return (
     <Wrap>
       <Header>
-        <Title>Settings</Title>
-        <Subtitle>Pick your avatar + skin. Saved per uid.</Subtitle>
+        <Title>Avatar Settings</Title>
+        <Subtitle>Customize your profile and appearance</Subtitle>
       </Header>
 
-      <Grid>
-        <Card>
-          <CardTitle>Avatar Preview</CardTitle>
+      <MainGrid>
+        {/* LEFT COLUMN - Preview & Identity */}
+        <LeftColumn>
+          <Card>
+            <SectionHeader>
+              <SectionTitle>Preview</SectionTitle>
+            </SectionHeader>
 
-          <PreviewRow>
-            <PreviewCol>
-              <ElectricPreviewWrap>
-                <ElectricAvatarPanel
-                  theme={electricTheme} // ✅ border-farge styres her (ikke skin)
-                  width={240}
-                  height={240}
-                  radius={24}
-                  emberCount={120}
-                  speed={1.15}
-                  chaos={0.14}
-                  lineWidth={1.15}
-                >
-                  <BigAvatarFrame>
-                    <AvatarSkinScope skin={skin}>
-                      <PlayerAvatar type={avatarType} size={previewSize} />
-                    </AvatarSkinScope>
-
-                  </BigAvatarFrame>
-                </ElectricAvatarPanel>
-              </ElectricPreviewWrap>
-
-              {/* ✅ NYTT: fargeknapper under preview */}
-              <ElectricControls>
-                <ElectricLabel>Electric color</ElectricLabel>
-                <SwatchRow>
-                  {ELECTRIC_THEMES.map((th) => (
-                    <SwatchButton
-                      key={th}
-                      type="button"
-                      aria-label={`Electric color: ${ELECTRIC_THEME_LABEL[th]}`}
-                      title={ELECTRIC_THEME_LABEL[th]}
-                      $active={electricTheme === th}
-                      $color={ELECTRIC_THEME_SWATCH[th]}
-                      onClick={() => selectElectricTheme(th)}
-                    />
-                  ))}
-                </SwatchRow>
-              </ElectricControls>
-            </PreviewCol>
-
-            <MiniInfo>
-              <InfoLine>
-                <Label>UID</Label>
-                <Value title={uid}>{uid}</Value>
-              </InfoLine>
-              <InfoLine>
-                <Label>Avatar</Label>
-                <Value>{avatarType}</Value>
-              </InfoLine>
-              <InfoLine>
-                <Label>Skin</Label>
-                <Value>{skinLabel}</Value>
-              </InfoLine>
-              <Hint>Preview is large so you can see details.</Hint>
-            </MiniInfo>
-          </PreviewRow>
-        </Card>
-
-        <Card>
-          <CardTitle>Choose Avatar</CardTitle>
-          <ChoiceGrid>
-  {AVATAR_TYPES.map((t) => (
-    <ChoiceButton
-      key={t}
-      type="button"
-      $active={avatarType === t}
-      onClick={() => selectAvatarType(t)}
-    >
-      <ChoiceThumb>
-        <AvatarSkinScope skin={skin}>
-          <PlayerAvatar type={t} size={84} />
-        </AvatarSkinScope>
-      </ChoiceThumb>
-      <ChoiceMeta>
-        <ChoiceName>{AVATAR_REGISTRY[t].label}</ChoiceName>
-        <ChoiceDesc>Choose this avatar.</ChoiceDesc>
-      </ChoiceMeta>
-    </ChoiceButton>
-  ))}
-</ChoiceGrid>
-
-
-          <Divider />
-
-          <CardTitle>Skins (filter-based for now)</CardTitle>
-          <SkinGrid>
-            {SKINS.map((s) => (
-              <SkinButton key={s.id} type="button" $active={skin === s.id} onClick={() => selectSkin(s.id)}>
-                <SkinThumb>
+            <PreviewContainer>
+              <ElectricAvatarPanel
+                theme={electricTheme}
+                width={240}
+                height={240}
+                radius={24}
+                emberCount={120}
+                speed={1.15}
+                chaos={0.14}
+                lineWidth={1.15}
+              >
+                <AvatarFrame>
                   <AvatarSkinScope skin={skin}>
-                    <PlayerAvatar type={avatarType} size={72} />
+                    <PlayerAvatar type={avatarType} size={200} />
                   </AvatarSkinScope>
-                </SkinThumb>
-                <SkinMeta>
-                  <SkinName>{s.name}</SkinName>
-                  <SkinDesc>{s.desc}</SkinDesc>
-                </SkinMeta>
-              </SkinButton>
-            ))}
-          </SkinGrid>
-        </Card>
-      </Grid>
+                </AvatarFrame>
+              </ElectricAvatarPanel>
+            </PreviewContainer>
+
+            <Divider />
+
+            <SectionHeader>
+              <SectionTitle>Display Name</SectionTitle>
+            </SectionHeader>
+            <NameInput
+              type="text"
+              placeholder="Enter your name..."
+              value={displayName}
+              onChange={(e) => {
+                const next = sanitizeName(e.target.value);
+                setDisplayName(next);
+                writeName(uid, next);
+
+                window.dispatchEvent(new Event("imposter:avatarPrefs"));
+              }}
+              maxLength={10}
+            />
+            <InputHint>{displayName.length}/10 characters</InputHint>
+
+            <Divider />
+
+            <SectionHeader>
+              <SectionTitle>Border Color</SectionTitle>
+              <SectionSubtitle>Choose your cutsom border color</SectionSubtitle>
+            </SectionHeader>
+
+            <ColorGrid>
+              {ELECTRIC_THEMES.map((theme) => (
+                <ColorOption
+                  key={theme}
+                  type="button"
+                  $active={electricTheme === theme}
+                  onClick={() => selectElectricTheme(theme)}
+                >
+                  <ColorSwatch $color={ELECTRIC_THEME_DATA[theme].color} />
+                  <ColorLabel $active={electricTheme === theme}>
+                    {ELECTRIC_THEME_DATA[theme].label}
+                  </ColorLabel>
+                </ColorOption>
+              ))}
+            </ColorGrid>
+          </Card>
+        </LeftColumn>
+
+        {/* RIGHT COLUMN - Avatar & Skin Selection */}
+        <RightColumn>
+          <Card>
+            <SectionHeader>
+              <SectionTitle>Avatar Type</SectionTitle>
+              <SectionSubtitle>Select your character model</SectionSubtitle>
+            </SectionHeader>
+
+            <AvatarGrid>
+              {AVATAR_TYPES.map((type) => (
+                <AvatarOption
+                  key={type}
+                  type="button"
+                  $active={avatarType === type}
+                  onClick={() => selectAvatarType(type)}
+                >
+                  <AvatarThumb>
+                    <AvatarSkinScope skin={skin}>
+                      <PlayerAvatar type={type} size={64} />
+                    </AvatarSkinScope>
+                  </AvatarThumb>
+                </AvatarOption>
+              ))}
+            </AvatarGrid>
+          </Card>
+
+          <Card>
+            <SectionHeader>
+              <SectionTitle>Color Theme</SectionTitle>
+              <SectionSubtitle>Choose your avatar's color palette</SectionSubtitle>
+            </SectionHeader>
+
+            <SkinList>
+              {SKINS.map((s) => (
+                <SkinOption
+                  key={s.id}
+                  type="button"
+                  $active={skin === s.id}
+                  onClick={() => selectSkin(s.id)}
+                >
+                  <SkinThumb>
+                    <AvatarSkinScope skin={s.id}>
+                      <PlayerAvatar type={avatarType} size={56} />
+                    </AvatarSkinScope>
+                  </SkinThumb>
+                  <SkinInfo>
+                    <SkinName>{s.name}</SkinName>
+                    <SkinDesc>{s.desc}</SkinDesc>
+                  </SkinInfo>
+                </SkinOption>
+              ))}
+            </SkinList>
+          </Card>
+        </RightColumn>
+      </MainGrid>
     </Wrap>
   );
 }
 
-/* ---------------- skins list ---------------- */
-
-const SKINS: Array<{ id: AvatarSkin; name: string; desc: string }> = [
-  { id: "classic", name: "Classic", desc: "Original look." },
-  { id: "midnight", name: "Midnight", desc: "Deep navy, eerie and cold." },
-  { id: "mint", name: "Super Trooper", desc: "Dominant red, bold and intense." },
-  { id: "sunset", name: "Midnight Sun", desc: "Warm Nordic glow: pinks, reds and gold." },
-  { id: "cyber", name: "Cyber", desc: "High-contrast neon vibe." },
-];
-
-
-/* ---------------- styled ---------------- */
+/* ================ STYLED COMPONENTS ================ */
 
 const Wrap = styled.section`
   width: 100%;
-  max-width: 980px;
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 2rem 1.5rem;
   color: #e5e7eb;
 `;
 
 const Header = styled.div`
-  margin-bottom: 1rem;
+  margin-bottom: 2rem;
+  text-align: center;
 `;
 
-const Title = styled.h2`
+const Title = styled.h1`
   margin: 0;
-  font-size: 2rem;
-  letter-spacing: 0.02em;
-  background: linear-gradient(45deg, #818cf8, #c7d2fe);
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #818cf8 0%, #c7d2fe 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 `;
 
 const Subtitle = styled.p`
-  margin: 0.35rem 0 0;
+  margin: 0.5rem 0 0;
   color: #94a3b8;
-  font-size: 0.95rem;
+  font-size: 1rem;
 `;
 
-const Grid = styled.div`
+const MainGrid = styled.div`
   display: grid;
-  grid-template-columns: 1.15fr 1fr;
-  gap: 1rem;
+  grid-template-columns: 380px 1fr;
+  gap: 1.5rem;
 
-  @media (max-width: 900px) {
+  @media (max-width: 1024px) {
     grid-template-columns: 1fr;
   }
 `;
 
-const Card = styled.div`
-  background: rgba(15, 23, 42, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 1rem;
-  backdrop-filter: blur(6px);
+const LeftColumn = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 `;
 
-const CardTitle = styled.div`
-  font-weight: 700;
+const RightColumn = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+`;
+
+const Card = styled.div`
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 1.5rem;
+  backdrop-filter: blur(8px);
+`;
+
+const SectionHeader = styled.div`
+  margin-bottom: 1rem;
+`;
+
+const SectionTitle = styled.h3`
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
   color: #e2e8f0;
-  margin-bottom: 0.75rem;
+`;
+
+const SectionSubtitle = styled.p`
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: #94a3b8;
 `;
 
 const Divider = styled.div`
   height: 1px;
-  margin: 1rem 0;
+  margin: 1.5rem 0;
   background: rgba(255, 255, 255, 0.08);
 `;
 
-const PreviewRow = styled.div`
-  display: grid;
-  grid-template-columns: 260px 1fr;
-  gap: 1rem;
-  align-items: start;
-
-  @media (max-width: 900px) {
-    grid-template-columns: 1fr;
-    justify-items: center;
-    text-align: center;
-  }
+/* Preview */
+const PreviewContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  margin-bottom: 1rem;
 `;
 
-const PreviewCol = styled.div`
-  display: grid;
-  gap: 0.75rem;
-  justify-items: center;
-`;
-
-const ElectricPreviewWrap = styled.div`
-  position: relative;
-  width: 240px;
-  height: 240px;
-`;
-
-const BigAvatarFrame = styled.div`
+const AvatarFrame = styled.div`
   width: 240px;
   height: 240px;
   border-radius: 24px;
   display: grid;
   place-items: center;
-
   background: radial-gradient(circle at 50% 35%, rgba(99, 102, 241, 0.18) 0%, rgba(15, 23, 42, 0) 70%);
-
-  /* ❌ fjernet border – electric border tar over */
-  border: none;
 `;
 
-const ElectricControls = styled.div`
-  display: grid;
-  gap: 0.45rem;
-  justify-items: center;
-`;
-
-const ElectricLabel = styled.div`
-  font-size: 0.85rem;
-  color: #94a3b8;
-`;
-
-const SwatchRow = styled.div`
-  display: flex;
-  gap: 0.55rem;
-  flex-wrap: wrap;
-  justify-content: center;
-`;
-
-const SwatchButton = styled.button<{ $active: boolean; $color: string }>`
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: ${({ $color }) => $color};
-  cursor: pointer;
-  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
-
-  ${({ $active, $color }) =>
-    $active &&
-    css`
-      transform: scale(1.12);
-      border-color: rgba(255, 255, 255, 0.55);
-      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08), 0 0 18px ${$color}66;
-    `}
-
-  &:hover {
-    transform: scale(1.12);
-    box-shadow: 0 0 14px ${({ $color }) => `${$color}66`};
-  }
-`;
-
-const MiniInfo = styled.div`
-  display: grid;
-  gap: 0.6rem;
-`;
-
-const InfoLine = styled.div`
-  display: grid;
-  grid-template-columns: 90px 1fr;
-  gap: 0.75rem;
-  align-items: baseline;
-
-  @media (max-width: 900px) {
-    grid-template-columns: 1fr;
-  }
-`;
-
-const Label = styled.div`
-  color: #94a3b8;
-  font-size: 0.85rem;
-`;
-
-const Value = styled.div`
-  color: #e2e8f0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 0.9rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-`;
-
-const Hint = styled.div`
-  margin-top: 0.25rem;
-  color: #94a3b8;
-  font-size: 0.9rem;
-`;
-
-/* ---- avatar type choices ---- */
-
-const ChoiceGrid = styled.div`
-  display: grid;
-  gap: 0.75rem;
-`;
-
-const ChoiceButton = styled.button<{ $active?: boolean }>`
+/* Name Input */
+const NameInput = styled.input`
   width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(30, 41, 59, 0.55);
-  border-radius: 12px;
-  padding: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #e2e8f0;
+  font-size: 1rem;
+  transition: all 150ms ease;
+
+  &::placeholder {
+    color: #64748b;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: rgba(99, 102, 241, 0.5);
+    background: rgba(30, 41, 59, 0.8);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  }
+`;
+
+const InputHint = styled.div`
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #64748b;
+  text-align: right;
+`;
+
+/* Color Grid */
+const ColorGrid = styled.div`
   display: grid;
-  grid-template-columns: 96px 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.75rem;
+`;
+
+const ColorOption = styled.button<{ $active: boolean }>`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: rgba(30, 41, 59, 0.4);
+  border: 2px solid ${({ $active }) => ($active ? "rgba(99, 102, 241, 0.8)" : "rgba(255, 255, 255, 0.08)")};
+  border-radius: 12px;
   cursor: pointer;
-  text-align: left;
-  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+  transition: all 150ms ease;
 
   &:hover {
-    transform: translateY(-1px);
-    border-color: rgba(99, 102, 241, 0.45);
-    background: rgba(30, 41, 59, 0.75);
+    background: rgba(30, 41, 59, 0.6);
+    border-color: ${({ $active }) => ($active ? "rgba(99, 102, 241, 1)" : "rgba(255, 255, 255, 0.15)")};
+    transform: translateY(-2px);
   }
 
   ${({ $active }) =>
     $active &&
     css`
-      border-color: rgba(99, 102, 241, 0.9);
-      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
     `}
 `;
 
-const ChoiceThumb = styled.div`
-  width: 96px;
-  height: 78px;
+const ColorSwatch = styled.div<{ $color: string }>`
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: ${({ $color }) => $color};
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 12px ${({ $color }) => `${$color}40`};
+`;
+
+const ColorLabel = styled.div<{ $active: boolean }>`
+  font-size: 0.85rem;
+  font-weight: ${({ $active }) => ($active ? "600" : "500")};
+  color: ${({ $active }) => ($active ? "#e2e8f0" : "#94a3b8")};
+`;
+
+/* Avatar Grid */
+const AvatarGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.75rem;
+`;
+
+const AvatarOption = styled.button<{ $active: boolean }>`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: rgba(30, 41, 59, 0.4);
+  border: 2px solid ${({ $active }) => ($active ? "rgba(99, 102, 241, 0.8)" : "rgba(255, 255, 255, 0.08)")};
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 150ms ease;
+
+  &:hover {
+    background: rgba(30, 41, 59, 0.6);
+    border-color: ${({ $active }) => ($active ? "rgba(99, 102, 241, 1)" : "rgba(255, 255, 255, 0.15)")};
+    transform: translateY(-2px);
+  }
+
+  ${({ $active }) =>
+    $active &&
+    css`
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+    `}
+`;
+
+const AvatarThumb = styled.div`
+  width: 80px;
+  height: 80px;
   display: grid;
   place-items: center;
+  background: rgba(2, 6, 23, 0.4);
   border-radius: 10px;
-  background: rgba(2, 6, 23, 0.35);
-  overflow: hidden;
 `;
 
-const ChoiceMeta = styled.div`
-  display: grid;
-  gap: 0.25rem;
-  align-content: center;
+const AvatarLabel = styled.div`
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  font-weight: 500;
+  text-align: center;
 `;
 
-const ChoiceName = styled.div`
-  font-weight: 700;
-  color: #e2e8f0;
-`;
-
-const ChoiceDesc = styled.div`
-  color: #94a3b8;
-  font-size: 0.9rem;
-  line-height: 1.25rem;
-`;
-
-/* ---- skins list ---- */
-
-const SkinGrid = styled.div`
-  display: grid;
+/* Skin List */
+const SkinList = styled.div`
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
 `;
 
-const SkinButton = styled.button<{ $active?: boolean }>`
-  width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(30, 41, 59, 0.55);
-  border-radius: 12px;
+const SkinOption = styled.button<{ $active: boolean }>`
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 1rem;
   padding: 0.75rem;
-  display: grid;
-  grid-template-columns: 88px 1fr;
-  gap: 0.75rem;
+  background: rgba(30, 41, 59, 0.4);
+  border: 2px solid ${({ $active }) => ($active ? "rgba(99, 102, 241, 0.8)" : "rgba(255, 255, 255, 0.08)")};
+  border-radius: 12px;
   cursor: pointer;
   text-align: left;
-  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+  transition: all 150ms ease;
 
   &:hover {
+    background: rgba(30, 41, 59, 0.6);
+    border-color: ${({ $active }) => ($active ? "rgba(99, 102, 241, 1)" : "rgba(255, 255, 255, 0.15)")};
     transform: translateY(-1px);
-    border-color: rgba(99, 102, 241, 0.45);
-    background: rgba(30, 41, 59, 0.75);
   }
 
   ${({ $active }) =>
     $active &&
     css`
-      border-color: rgba(99, 102, 241, 0.9);
-      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
     `}
 `;
 
 const SkinThumb = styled.div`
-  width: 88px;
+  width: 72px;
   height: 72px;
   display: grid;
   place-items: center;
+  background: rgba(2, 6, 23, 0.4);
   border-radius: 10px;
-  background: rgba(2, 6, 23, 0.35);
-  overflow: hidden;
 `;
 
-const SkinMeta = styled.div`
-  display: grid;
+const SkinInfo = styled.div`
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   gap: 0.25rem;
-  align-content: center;
 `;
 
 const SkinName = styled.div`
-  font-weight: 700;
+  font-weight: 600;
   color: #e2e8f0;
+  font-size: 0.95rem;
 `;
 
 const SkinDesc = styled.div`
   color: #94a3b8;
-  font-size: 0.9rem;
-  line-height: 1.25rem;
+  font-size: 0.85rem;
+  line-height: 1.3;
 `;

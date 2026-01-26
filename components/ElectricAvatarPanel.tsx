@@ -3,7 +3,18 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import styled from "styled-components";
 
-type ElectricTheme = "blue" | "pink" | "red" | "green" | "purple" | "white";
+type ElectricTheme =
+  | "blue"
+  | "pink"
+  | "red"
+  | "green"
+  | "purple"
+  | "white"
+  | "hotPink"
+  | "deepBlue"
+  | "blackEmits"
+  | "deepGreen";
+
 type ElectricAvatarPanelProps = {
   className?: string;
   children: React.ReactNode;
@@ -66,17 +77,18 @@ const THEMES: Record<
   },
 
   // 2) ✅ gjør red mer blodrød
-  red: {
-    stroke: "#FF3B3B",                // blodrød “core line”
-    glowA: "rgba(255, 0, 43, 0.46)",  // sterk rødglød
-    glowB: "rgba(255, 0, 43, 0.18)",  // medium
-    glowC: "rgba(255, 0, 43, 0.00)",  // falloff
-    emberCore: "rgba(255, 235, 235, 0.92)",
-    emberMid: "rgba(255, 28, 86, 0.62)",   // hot pinkish blood
-    emberOuter: "rgba(160, 0, 20, 0.22)",  // mørk blodkant
-    bgGlowA: "rgba(255, 0, 43, 0.22)",
-    bgGlowB: "rgba(120, 0, 18, 0.16)",
-  },
+ red: {
+  stroke: "#FF1A2D",                 // hard bloody core
+  glowA: "rgb(140 0 18 / 17%)",
+  glowB: "rgb(197 0 40 / 60%)",
+  glowC: "rgb(207 5 5 / 81%)",
+  emberCore: "rgba(255, 240, 240, 0.96)",
+  emberMid: "rgba(255, 18, 74, 0.62)",
+  emberOuter: "rgba(40, 0, 6, 0.32)", // mørk “blood soot”
+  bgGlowA: "rgba(110, 0, 12, 0.26)",
+  bgGlowB: "rgba(20, 0, 0, 0.18)",
+},
+
 
   green: {
     stroke: "#B6FFD8",
@@ -114,6 +126,53 @@ const THEMES: Record<
     bgGlowA: "rgba(255, 255, 255, 0.18)",
     bgGlowB: "rgba(160, 200, 255, 0.10)",
   },
+  hotPink: {
+  stroke: "#FF4FD8",
+  glowA: "rgb(255 0 200 / 4%)",
+  glowB: "rgb(255 0 200 / 36%)",
+  glowC: "rgb(255 0 200 / 58%)",
+  emberCore: "rgba(255, 245, 255, 0.96)",
+  emberMid: "rgba(255, 95, 235, 0.62)",
+  emberOuter: "rgba(120, 0, 110, 0.24)",
+  bgGlowA: "rgba(255, 0, 200, 0.22)",
+  bgGlowB: "rgba(255, 120, 235, 0.14)",
+},
+deepBlue: {
+  stroke: "#2256c9",                 // lys “electric core”, men bakgrunn/glow blir mørk
+  glowA: "rgba(0 24 129 / 48%)",
+  glowB: "rgba(4 58 157 / 38%)",
+  glowC: "rgba(0 54 185 / 90%)",
+  emberCore: "rgba(235, 250, 255, 0.92)",
+  emberMid: "rgba(80, 170, 255, 0.42)",
+  emberOuter: "rgba(0, 6, 22, 0.42)", // dyp mørk
+  bgGlowA: "rgba(3, 10, 40, 0.55)",   // “deep space”
+  bgGlowB: "rgba(0, 55, 140, 0.18)",
+},
+deepGreen: {
+  stroke: "#376a3e",                 // lys core-line
+glowA: "rgba(0 145 20 / 46%)",
+glowB: "rgba(0 167 16 / 26%)",
+glowC: "rgba(5 127 56 / 56%)",
+  emberCore: "rgba(235, 255, 248, 0.92)",
+  emberMid: "rgba(0, 255, 178, 0.38)",
+  emberOuter: "rgba(0, 10, 6, 0.45)", // dyp mørk
+  bgGlowA: "rgba(0, 28, 18, 0.60)",
+  bgGlowB: "rgba(0, 120, 80, 0.14)",
+},
+blackEmits: {
+  stroke: "#F4F7FF",                  // hvit-ish “crack lightning”
+  glowA: "rgba(255, 255, 255, 0.24)",  // hvit glød
+  glowB: "rgba(120, 150, 255, 0.10)",  // litt cold tint
+  glowC: "rgba(0, 0, 0, 0.00)",
+  emberCore: "rgba(255, 255, 255, 0.92)", // hvite “glints”
+  emberMid: "rgba(180, 200, 255, 0.30)",   // dust
+  emberOuter: "rgba(0, 0, 0, 0.36)",       // mørk “matter fog”
+  bgGlowA: "rgba(255, 255, 255, 0.08)",
+  bgGlowB: "rgba(0, 0, 0, 0.40)",          // tung mørkhet
+},
+
+
+
 };
 
 export default function ElectricAvatarPanel({
@@ -414,7 +473,7 @@ const drawPass = (
   points: Array<{ x: number; y: number }>,
   acc: number[],
   total: number,
-  stroke: string,
+  stroke: string | CanvasGradient,
   lw: number,
   alpha: number,
   blurPx: number,
@@ -524,8 +583,28 @@ const drawPass = (
       const { acc, total } = buildArcProgress(points);
 
 // glow + crisp
-drawPass(points, acc, total, t.stroke, lineWidth + 1.6, 0.40, 6.5, innerW, innerH, rad);
-drawPass(points, acc, total, t.stroke, lineWidth,        0.90, 0,   innerW, innerH, rad);
+const isBlack = theme === "blackEmits";
+
+if (isBlack) {
+  // 1) sort “shadow” under (gir black matter / soot rundt lightning)
+  drawPass(points, acc, total, "#000000", lineWidth + 3.2, 0.22, 10.5, innerW, innerH, rad);
+  drawPass(points, acc, total, "#0B0F1A", lineWidth + 2.2, 0.22, 6.5,  innerW, innerH, rad);
+
+  // 2) gradient stroke (hvit -> mørk -> hvit)
+  const g = ctx.createLinearGradient(PAD, PAD, PAD + innerW, PAD + innerH);
+  g.addColorStop(0.0, "rgba(255,255,255,0.95)");
+  g.addColorStop(0.42, "rgba(11,15,26,0.75)");
+  g.addColorStop(0.58, "rgba(255,255,255,0.92)");
+  g.addColorStop(1.0, "rgba(180,210,255,0.90)");
+
+  drawPass(points, acc, total, g as any, lineWidth + 1.8, 0.44, 7.0, innerW, innerH, rad);
+  drawPass(points, acc, total, g as any, lineWidth,       0.92, 0,   innerW, innerH, rad);
+} else {
+  // vanlig
+  drawPass(points, acc, total, t.stroke, lineWidth + 1.6, 0.40, 6.5, innerW, innerH, rad);
+  drawPass(points, acc, total, t.stroke, lineWidth,        0.90, 0,   innerW, innerH, rad);
+}
+
 
 
       raf = requestAnimationFrame(animate);

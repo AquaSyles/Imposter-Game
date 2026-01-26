@@ -1,10 +1,11 @@
 export type AvatarSkin = "classic" | "midnight" | "mint" | "sunset" | "cyber";
 export type AvatarType = "classicAstronaut" | "redAstronaut" | "robot";
-export type ElectricTheme = "blue" | "pink" | "red" | "green" | "purple" | "white";
+export type ElectricTheme = "blue" | "pink" | "red" | "green" | "purple" | "white" | "hotPink" | "deepBlue" | "blackEmits" | "deepGreen";
 
 const SKIN_VALID = ["classic", "midnight", "mint", "sunset", "cyber"] as const;
 const TYPE_VALID = ["classicAstronaut", "redAstronaut", "robot"] as const;
-const ELECTRIC_THEME_VALID = ["blue", "pink", "red", "green", "purple", "white"] as const;
+const ELECTRIC_THEME_VALID = ["blue", "pink", "red", "green", "purple", "white", "hotPink", "deepBlue", "blackEmits", "deepGreen"] as const;
+const KEY_NAME = "imposter_name";
 
 export const skinKey = (uid: string) => `imposter_skin:${uid}`;
 export const typeKey = (uid: string) => `imposter_avatarType:${uid}`;
@@ -52,4 +53,16 @@ export function writeElectricTheme(uid: string, theme: ElectricTheme) {
   
   // 🔥 trigger update for other components
   window.dispatchEvent(new Event("imposter:avatarPrefs"));
+}
+
+export type DisplayName = string;
+export function readName(uid: string): DisplayName {
+  if (typeof window === "undefined") return "";
+  const v = localStorage.getItem(`${KEY_NAME}:${uid}`);
+  return v ?? "";
+}
+
+export function writeName(uid: string, name: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(`${KEY_NAME}:${uid}`, name);
 }

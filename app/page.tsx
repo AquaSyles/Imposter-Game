@@ -1,14 +1,571 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import Lobby from "@/components/Lobby";
-import Themes from "@/components/Themes";
-import styled from 'styled-components';
-import { FaCog } from 'react-icons/fa';
-import { AstronautAvatar } from '@/components/avatar';
-import Image from 'next/image';
-import voteVImage from '/Vote_V.png';
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import styled, { keyframes } from "styled-components";
+import Image from "next/image";
+import { FaCog, FaTimes } from "react-icons/fa";
+import ElectricAvatarPanel from "@/components/ElectricAvatarPanel";
 
+import Lobby from "@/components/Lobby";
+import Themes, { WORD_DATA } from "@/components/Themes";
+import Game from "@/components/Game";
+import SettingsPanel from "@/components/settings";
+
+import { PlayerAvatar } from "@/components/avatars/PlayerAvatar";
+import AvatarSkinScope from "@/components/avatars/AvatarSkinScope";
+import { Orbitron } from "next/font/google";
+
+const orbitron = Orbitron({
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
+});
+
+
+import type { Player } from "@/types/player";
+import {
+  createLobby,
+  joinLobby,
+  listenToLobby,
+  listenToLobbyPlayersActiveSession, // ✅
+  startGame,
+  leaveLobby,
+  closeLobby,
+  updatePlayerPrefs,
+} from "@/firebase/lobby";
+
+import { findReusableLobby, updatePlayerName } from "@/firebase/lobby";
+import { useTheme } from "@/components/ThemeContext";
+
+import { readSkin, readType, readElectricTheme, readName, type AvatarSkin, type AvatarType } from "@/firebase/avatarPrefs";
+import type { ElectricTheme } from "@/firebase/avatarPrefs";
+
+
+/* ---------------- helpers ---------------- */
+
+function getOrCreateUid() {
+  if (typeof window === "undefined") return crypto.randomUUID();
+  const key = "imposter_uid";
+  const existing = localStorage.getItem(key);
+  if (existing) return existing;
+  const uid = crypto.randomUUID();
+  localStorage.setItem(key, uid);
+  return uid;
+}
+
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const update = () => setIsMobile(mq.matches);
+
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
+
+/* ---------------- background component ---------------- */
+type StarT = {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
+  size: number;
+  speed: number;
+  delay: number;
+  rot: number; // ✅
+};
+
+const StarryBackground = ({ hyperspeed = false }: { hyperspeed?: boolean }) => {
+  const [stars, setStars] = useState<StarT[]>([]);
+
+  useEffect(() => {
+    const build = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+
+      const next: StarT[] = Array.from({ length: 220 }, (_, i) => {
+        const depth = Math.random();
+
+        const x = (Math.random() - 0.5) * w * 1.6;
+        const y = (Math.random() - 0.5) * h * 1.6;
+        const rot = Math.atan2(y, x) * (180 / Math.PI);
+
+        return {
+          id: i,
+          x,
+          y,
+          rot,
+          z: -800 - depth * 1200,
+          size: 1 + depth * 2.5,
+          speed: 2 + depth * 4 + Math.random() * 2,
+          delay: Math.random() * 3,
+        };
+      });
+
+      setStars(next);
+    };
+
+    build();
+    window.addEventListener("resize", build);
+    return () => window.removeEventListener("resize", build);
+  }, []);
+
+  return (
+    <StarBackground $hyperspeed={hyperspeed}>
+      {stars.map((s) => (
+        <Star
+          key={s.id}
+          $x={s.x}
+          $y={s.y}
+          $z={s.z}
+          $size={s.size}
+          $speed={s.speed}
+          $delay={s.delay}
+          $rot={s.rot}          // ✅ VIKTIG
+          $hyper={hyperspeed}   // ✅ VIKTIG
+        />
+      ))}
+    </StarBackground>
+  );
+};
+
+/* ---------------- page ---------------- */
+
+export default function Home() {
+  const uid = useMemo(() => getOrCreateUid(), []);
+  const { selectedThemeId } = useTheme();
+  const [hyperspeed, setHyperspeed] = useState(false);
+
+  const [showThemes, setShowThemes] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+  const [isCopied, setIsCopied] = useState(false);
+
+  const [lobby, setLobby] = useState<any | null>(null);
+  const isMobile = useIsMobile();
+
+  const [lobbyPlayers, setLobbyPlayers] = useState<Player[]>([]);
+const [myPlayer, setMyPlayer] = useState<Player | null>(null);
+
+
+  const [isHost, setIsHost] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+
+  const [showSettings, setShowSettings] = useState(false);
+
+  const handleExitLobby = useCallback(async () => {
+    if (!inviteCode || !myPlayer) return;
+
+    try {
+      await leaveLobby(inviteCode, myPlayer.uid);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      // reset state tilbake til startmeny
+      setShowThemes(false);
+      setInviteCode("");
+      setLobby(null);
+      setLobbyPlayers([]);
+      setIsHost(false);
+    }
+  }, [inviteCode, myPlayer]);
+
+  // prefs
+  const [avatarType, setAvatarType] = useState<AvatarType>("classicAstronaut");
+  const [skin, setSkin] = useState<AvatarSkin>("classic");
+  const [electricTheme, setElectricTheme] = useState<ElectricTheme>("blue");
+
+  useEffect(() => {
+    setAvatarType(readType(uid));
+    setSkin(readSkin(uid));
+    setElectricTheme(readElectricTheme(uid));
+  }, [uid]);
+useEffect(() => {
+  if (!inviteCode || !myPlayer?.uid) return;
+  updatePlayerPrefs(inviteCode, myPlayer.uid, avatarType, skin).catch(console.error);
+}, [inviteCode, myPlayer?.uid, avatarType, skin]);
+
+  
+useEffect(() => {
+  const onPrefs = () => {
+    setAvatarType(readType(uid));
+    setSkin(readSkin(uid));
+    setElectricTheme(readElectricTheme(uid));
+  };
+
+  onPrefs(); // ✅ init
+  window.addEventListener("imposter:avatarPrefs", onPrefs);
+  return () => window.removeEventListener("imposter:avatarPrefs", onPrefs);
+}, [uid]);
+
+
+  const copyToClipboard = () => {
+    if (!inviteCode) return;
+    navigator.clipboard.writeText(inviteCode);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
+const setupLobby = useCallback(
+  
+  async (isNewGame = false, forcedCode?: string) => {
+    // ✅ alltid sørg for at player har korrekt uid
+    let player: Player;
+
+    const savedName = readName(uid);
+  const fallbackName = `Player ${Math.floor(100 + Math.random() * 900)}`;
+    if (!myPlayer || !myPlayer.uid) {
+      player = {
+  uid,
+  playerId: 0,
+  name: savedName || fallbackName,
+  avatar: "astronaut",
+  skin,
+  avatarType,
+  joinedAt: Date.now(),
+};
+
+      setMyPlayer(player);
+    } else {
+      // ✅ tving korrekt uid hvis den av en eller annen grunn er feil/blank
+      player = { ...myPlayer, uid: myPlayer.uid || uid };
+      if (player.uid !== myPlayer.uid) setMyPlayer(player);
+    }
+
+    if (isNewGame) {
+  const host: Player = { ...player, uid, playerId: 100, joinedAt: Date.now() };
+  setMyPlayer(host);
+
+  const code = forcedCode!;
+  const sessionId = await createLobby(code, host);
+
+
+  setInviteCode(code);
+  setIsHost(true);
+  return;
+}
+
+
+
+    if (!isNewGame && forcedCode) {
+  const joiner: Player = { ...player, uid, playerId: 0, joinedAt: Date.now() };
+  await joinLobby(forcedCode, joiner);
+
+  setMyPlayer(joiner);
+  setInviteCode(forcedCode);
+  setIsHost(false);
+  return;
+}
+
+  },
+  [uid, myPlayer, avatarType, skin]
+);
+
+const handleCreateGame = useCallback(async () => {
+  if (isCreating) return;
+  setIsCreating(true);
+
+  try {
+    let code: string | null = await findReusableLobby();
+
+    if (!code) {
+      // ❌ ingen ledig → lag ny
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      code = Array.from({ length: 6 }, () =>
+        chars[Math.floor(Math.random() * chars.length)]
+      ).join("");
+    }
+
+    await setupLobby(true, code);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    setIsCreating(false);
+  }
+}, [setupLobby, isCreating]);
+
+
+  const handleJoinGame = useCallback(
+    async (code: string) => {
+      if (isCreating) return;
+      setIsCreating(true);
+      try {
+        await setupLobby(false, code);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsCreating(false);
+      }
+    },
+    [setupLobby, isCreating]
+  );
+
+ // listen players (session-safe)
+useEffect(() => {
+  if (!inviteCode) {
+    setLobbyPlayers([]);
+    return;
+  }
+
+  const unsub = listenToLobbyPlayersActiveSession(inviteCode, setLobbyPlayers);
+  return () => unsub();
+}, [inviteCode]);
+
+useEffect(() => {
+  if (!inviteCode || !myPlayer?.uid) return;
+
+  const savedName = readName(uid);
+  if (!savedName) return;
+
+  // unngå spam dersom samme navn
+  if (myPlayer?.name === savedName) return;
+
+  updatePlayerName(inviteCode, myPlayer.uid, savedName).catch(console.error);
+
+  // også oppdater local state så dock viser riktig direkte
+  setMyPlayer((p) => (p ? { ...p, name: savedName } : p));
+}, [inviteCode, myPlayer?.uid, uid, myPlayer?.name]);
+
+
+  // listen lobby
+ useEffect(() => {
+  if (!inviteCode || typeof inviteCode !== "string" || !/^[A-Z0-9]{6}$/.test(inviteCode)) {
+    setLobby(null);
+    setLobbyPlayers([]);
+    setIsHost(false);
+    return;
+  }
+
+  const unsub = listenToLobby(inviteCode, (l) => {
+    if (!l || l.status === "closed") {
+      setShowThemes(false);
+      setInviteCode("");
+      setLobby(null);
+      setLobbyPlayers([]);
+      setIsHost(false);
+      return;
+    }
+
+    setLobby(l);
+  });
+
+  return () => unsub();
+}, [inviteCode]);
+
+
+  useEffect(() => {
+  if (!inviteCode) return;
+  localStorage.setItem("imposter_last_lobby", inviteCode);
+}, [inviteCode]);
+
+
+  // merge + dedupe players
+  const myUid = myPlayer?.uid;
+  const mergedPlayers = [...(myPlayer ? [myPlayer] : []), ...lobbyPlayers] as Player[];
+  const uniquePlayers = Array.from(new Map(mergedPlayers.map((p) => [p.uid, p])).values());
+
+  const orderedPlayers = myUid
+    ? [...uniquePlayers.filter((p) => p.uid === myUid), ...uniquePlayers.filter((p) => p.uid !== myUid)]
+    : uniquePlayers;
+
+  const isInGame = lobby?.status === "started" || lobby?.status === "finished";
+
+  const gameData = lobby?.game;
+
+  // ✅ start game: bruker temaet som ligger i lobby.settings
+const handleStartGame = useCallback(async () => {
+  if (!inviteCode || !myPlayer) return;
+
+  const themeId: string | null = lobby?.settings?.selectedThemeId ?? null;
+  if (!themeId) {
+    alert("Host must select a theme first!");
+    return;
+  }
+
+  const words = WORD_DATA[themeId];
+  if (!words?.length) {
+    alert("No words found for theme: " + themeId);
+    return;
+  }
+
+  // ✅ Velg secret word (crew får dette)
+  const randomWord = words[Math.floor(Math.random() * words.length)];
+
+  // ✅ Lag snilt imposter-hint:
+  // - fortell temaet
+  // - vis 3 eksempler (ekskluder secret word)
+  // - vis lengde på ordet (hjelper litt uten å avsløre)
+  const pool = words.filter((w) => w !== randomWord);
+  const examples: string[] = [];
+  while (examples.length < Math.min(3, pool.length)) {
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    if (!examples.includes(pick)) examples.push(pick);
+  }
+
+  const imposterHint = `THEME: ${themeId}.  WORD LENGTH: ${randomWord.length}.`;
+  // Fjernet Exampleword for mer vanskelighetsgrad: Example words: ${examples.join(", ")}.
+  // ✅ Start game med hint
+  await startGame(inviteCode, myPlayer.uid, randomWord, themeId, imposterHint);
+}, [inviteCode, myPlayer, lobby]);
+
+
+  return (
+    <>
+      <StarryBackground hyperspeed={hyperspeed} />
+
+      <PageContainer>
+        <GlowEffect />
+
+       {/* Top-right player container */}
+<PlayerDock>
+<ElectricAvatarPanel
+  theme={electricTheme}
+  mirror={isMobile}
+  borderRadiusCss={isMobile ? "0 0 160px 160px" : "0 0 0 60px"}
+  width={isMobile ? 300 : 300}
+  height={isMobile ? 150 : 200}
+  radius={isMobile ? 160 : 60}
+  emberCount={120}
+  speed={1.15}
+  chaos={0.14}
+  lineWidth={1.15}
+>
+    <PlayerContainerInner>
+      <Bar>
+        <PlayerWrapper>
+          <AvatarSkinScope skin={skin}>
+            <PlayerAvatar type={avatarType} size={isMobile ? 80 : 100} />
+          </AvatarSkinScope>
+
+
+
+          <PlayerName>
+            {myPlayer ? `${myPlayer.name} (You)` : "You (not in lobby)"}{" "}
+            {myPlayer?.playerId === 100 ? "👑" : ""}
+          </PlayerName>
+        </PlayerWrapper>
+      </Bar>
+
+      <Bar_2>
+        <VoteBadge>
+          <a href="https://vintrastudio.com/" target="_blank">
+          <Image src="/Vote_V.png" alt="Vote V" width={50} height={50} priority />
+          </a>
+        </VoteBadge>
+
+        <SettingsButton onClick={() => setShowSettings(true)} aria-label="Open settings">
+          <FaCog />
+        </SettingsButton>
+      </Bar_2>
+    </PlayerContainerInner>
+  </ElectricAvatarPanel>
+</PlayerDock>
+
+
+        <MainContainer>
+          {inviteCode && (
+            <InviteCode>
+              <CodeLabel>Invite Code</CodeLabel>
+              <CodeDisplay onClick={copyToClipboard} title="Click to copy">
+                {inviteCode}
+                {isCopied && (
+                  <span style={{ marginLeft: "0.5rem", fontSize: "0.8rem", color: "#4ade80" }}>
+                    Copied!
+                  </span>
+                )}
+              </CodeDisplay>
+            </InviteCode>
+          )}
+
+          {!inviteCode && (
+            <Title data-text="Imposter Game" className={orbitron.className}>
+              Imposter Game
+              <span className="scan" />
+            </Title>
+          )}
+
+
+          {/* ✅ game view */}
+          {isInGame ? (
+  <Game
+    inviteCode={inviteCode}
+    players={orderedPlayers}
+    myUid={uid}
+    game={gameData}
+    isHost={isHost}
+    hostUid={myPlayer?.uid ?? ""}
+  />
+) : !inviteCode ? (
+  // ✅ STARTMENY (Create/Join)
+  <Lobby
+    mode="menu"
+    players={orderedPlayers}
+    onJoinGame={handleJoinGame}
+    onCreateGame={handleCreateGame}
+    onHyperspeed={(v) => setHyperspeed(v)}
+
+    
+  />
+) : showThemes ? (
+  // ✅ THEMES
+  <Themes
+    onBack={() => setShowThemes(false)}
+    onStartGame={handleStartGame}
+    isHost={isHost}
+    canStartGame={!!lobby?.settings?.selectedThemeId}
+    inviteCode={inviteCode}
+    hostUid={myPlayer?.uid ?? ""}
+  />
+) : (
+  // ✅ LOBBY ROM (etter join/create)
+  <Lobby
+    mode="room"
+    players={orderedPlayers}
+    isHost={isHost}
+    onContinueToThemes={() => setShowThemes(true)}
+    onExitLobby={handleExitLobby}
+  />
+)}
+
+        </MainContainer>
+      </PageContainer>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <ModalOverlay onClick={() => setShowSettings(false)}>
+          <ModalCard onClick={(e) => e.stopPropagation()}>
+            <CloseBtn onClick={() => setShowSettings(false)} aria-label="Close settings">
+              <FaTimes />
+            </CloseBtn>
+
+            <SettingsPanel
+              uid={uid}
+              initialAvatarType={avatarType}
+              initialSkin={skin}
+              onAvatarTypeChange={(t) => setAvatarType(t)}
+              onSkinChange={(s) => setSkin(s)}
+            />
+          </ModalCard>
+        </ModalOverlay>
+      )}
+    </>
+  );
+}
+
+/* ---------------- styled components ---------------- */
+
+const spin = keyframes`
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+`;
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -22,56 +579,186 @@ const PageContainer = styled.div`
   z-index: 2;
   box-sizing: border-box;
   overflow: hidden;
-`;
-const StarBackground = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: linear-gradient(135deg, #0f172a, #1e293b);
-  z-index: 1;
-  overflow: hidden;
-`;
-const Star = styled.div<{ $top: string; $left: string; $delay: string }>`
-  position: absolute;
-  top: ${({ $top }) => $top};
-  left: ${({ $left }) => $left};
-  width: 2px;
-  height: 2px;
-  background: white;
-  border-radius: 50%;
-  animation: twinkle 3s infinite;
-  animation-delay: ${({ $delay }) => $delay};
-  opacity: 0.7;
-  @keyframes twinkle {
-    0%, 100% { opacity: 0.2; }
-    50% { opacity: 1; }
+  @media (max-width: 768px) {
+    padding: 0rem;
   }
 `;
 
-const Title = styled.h1`
-  font-size: 3.5rem;
-  font-weight: 700;
-  margin-bottom: 2rem;
-  margin-left: 35%;
-  background: linear-gradient(45deg, #3b82f6, #8b5cf6);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+const StarBackground = styled.div<{ $hyperspeed?: boolean }>`
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at center, #020617, #000);
+  perspective: 800px;
+  overflow: hidden;
+  z-index: 0;
+
+  ${({ $hyperspeed }) =>
+    $hyperspeed &&
+    `
+      filter: brightness(1.08) contrast(1.05);
+    `}
 `;
+
+
+const fly = keyframes`
+  from {
+    transform: translate3d(var(--x), var(--y), var(--z)) scale(var(--size));
+    opacity: 0;
+  }
+  10% { opacity: 1; }
+  to {
+    transform: translate3d(
+      calc(var(--x) * 1.6),
+      calc(var(--y) * 1.6),
+      300px
+    ) scale(calc(var(--size) * 1.5));
+    opacity: 0;
+  }
+`;
+
+const flyHyper = keyframes`
+  from {
+    transform:
+      translate3d(var(--x), var(--y), var(--z))
+      rotate(var(--rot))
+      scale(var(--size))
+      scaleX(0.35);
+    opacity: 0;
+  }
+
+  8% {
+    opacity: 1;
+  }
+
+  to {
+    transform:
+      translate3d(
+        calc(var(--x) * 2.2),
+        calc(var(--y) * 2.2),
+        650px
+      )
+      rotate(var(--rot))
+      scale(var(--size))
+      scaleX(22);
+    opacity: 0;
+  }
+`;
+
+
+
+
+
+
+const Star = styled.div<{
+  $x: number;
+  $y: number;
+  $z: number;
+  $size: number;
+  $speed: number;
+  $delay: number;
+  $rot: number;
+  $hyper?: boolean;
+}>`
+  position: absolute;
+  left: 50%;
+  top: 50%;
+
+  width: 2px;
+  height: 2px;
+  border-radius: 999px;
+  background: white;
+
+  --x: ${({ $x }) => `${$x}px`};
+  --y: ${({ $y }) => `${$y}px`};
+  --z: ${({ $z }) => `${$z}px`};
+  --size: ${({ $size }) => $size};
+  --rot: ${({ $rot }) => `${$rot}deg`}; /* ✅ MUST */
+
+  transform-origin: center;
+  will-change: transform, opacity;
+
+  animation: ${({ $hyper }) => ($hyper ? flyHyper : fly)}
+    ${({ $hyper, $speed }) => ($hyper ? Math.max(0.35, $speed * 0.18) : $speed)}s
+    linear infinite;
+
+  animation-delay: ${({ $delay }) => $delay}s;
+`;
+
+const impostorFlicker = keyframes`
+  0%, 100% { opacity: 1; transform: translateY(0); }
+  50%      { opacity: 0.98; transform: translateY(0.5px); }
+`;
+
+const glitchShift = keyframes`
+  0%   { transform: translate(0,0); opacity: 0; }
+  8%   { transform: translate(0,0); opacity: 0; }
+  10%  { transform: translate(1px,0); opacity: 0.12; }
+  12%  { transform: translate(-1px,0); opacity: 0.10; }
+  14%  { transform: translate(0,0); opacity: 0; }
+  100% { transform: translate(0,0); opacity: 0; }
+`;
+
+const scanSweep = keyframes`
+  0%   { transform: translateY(-120%); opacity: 0; }
+  10%  { opacity: 0.18; }
+  50%  { opacity: 0.12; }
+  100% { transform: translateY(140%); opacity: 0; }
+`;
+
+const bloodPulse = keyframes`
+  0%, 100% {
+    filter: drop-shadow(0 2px 10px rgba(0,0,0,0.9))
+            drop-shadow(0 0 18px rgba(220,38,38,0.35))
+            drop-shadow(0 0 34px rgba(220,38,38,0.18));
+  }
+  50% {
+    filter: drop-shadow(0 2px 12px rgba(0,0,0,0.95))
+            drop-shadow(0 0 26px rgba(255,45,85,0.55))
+            drop-shadow(0 0 46px rgba(255,45,85,0.26));
+  }
+`;
+
+const shineSweep = keyframes`
+  0%   { transform: translateX(-130%) skewX(-20deg); opacity: 0; }
+  12%  { opacity: 0.0; }
+  22%  { opacity: 0.35; }
+  32%  { opacity: 0.0; }
+  100% { transform: translateX(130%) skewX(-20deg); opacity: 0; }
+`;
+
+const Title = styled.h1`
+  position: relative;
+  text-align: center;
+  margin: 0 0 2rem;
+
+  font-size: 3.6rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  line-height: 1.05;
+
+  /* ✅ “imposter red” men fortsatt leslig */
+  color: #ff2d55; /* hot blood */
+  text-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.95),
+    0 0 14px rgba(220, 38, 38, 0.45),
+    0 0 28px rgba(220, 38, 38, 0.22);
+
+  animation: ${bloodPulse} 3.8s ease-in-out infinite;
+
+ 
+
+ 
+
+  @media (max-width: 768px) {
+    font-size: 2.6rem;
+  }
+`;
+
 
 const GlowEffect = styled.div`
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: radial-gradient(
-    circle at 50% 50%,
-    rgba(99, 102, 241, 0.1) 0%,
-    rgba(16, 24, 39, 0) 70%
-  );
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.1) 0%, rgba(16, 24, 39, 0) 70%);
   pointer-events: none;
   z-index: 1;
 `;
@@ -82,61 +769,102 @@ const MainContainer = styled.main`
   position: relative;
   z-index: 2;
   overflow: visible;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 `;
 
-const PlayerContainer = styled.div`
-display: flex;
-flex-direction: row;
-justify-content: center;
- width: 300px;
- height: 200px;
- gap: 5rem;
- background: #1e293b;
- border: 1px  white solid;
- border-radius: 0 0 0 60px;
- position: absolute;
- top: -4px;
- right: -1px
+const PlayerDock = styled.div`
+  position: absolute;
+  top: -4px;
+  right: -1px;
+  width: 300px;
+  height: 200px;
+  z-index: 10;
+  @media (max-width: 768px) {
+    right: auto;
+    left:auto;
+    height: 150px;
+    width: 300px;
+  }
 `;
+
+const PlayerContainerInner = styled.div`
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  gap: 3rem;
+
+  /* behold samme look */
+  background: #1e293b;
+  border-radius: 0 0 0 60px;
+  padding: 1rem;
+
+  /* ❌ fjern hvit border – electric tar over */
+  border: none;
+  @media (max-width: 768px) {
+    gap: 0rem;
+    width: 300px;
+    height: 150px;
+    align-items: center;
+    border-radius: 0 0  160px 160px;
+  }
+`;
+
 
 const Bar = styled.div`
-display: flex;
-flex-direction: column;
-gap: 5rem;
-justify-content: center;
-text-align: center;
-
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
 `;
 
 const Bar_2 = styled.div`
-display: flex;
-flex-direction: column;
-gap: 40px;
-justify-content: center;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  justify-content: center;
 `;
-const Player = styled.div`
-postion: absoulte;
-dispay: grid;
 
+const PlayerWrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 12px;
+  min-width: 120px;
+`;
+const PlayerInner = styled.div`
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  gap: 3rem;
+  padding: 1rem;
+  z-index: 10;
 `;
 
 const PlayerName = styled.div`
-
   color: #94a3b8;
 `;
+
 const VoteBadge = styled.div`
-  top: 10px;
-  right: 60px;
   z-index: 10;
-  
   img {
     width: 60px;
     height: 60px;
     object-fit: contain;
   }
+  @media (max-width: 768px) {
+    display: none;
+    visibility: hidden;
+  }
 `;
-const Settings = styled.div`
-display: flex;
+const SettingsButton = styled.button`
+  display: flex;
   width: 60px;
   height: 60px;
   border: 2px solid #4f46e5;
@@ -148,18 +876,27 @@ display: flex;
   font-size: 1.5rem;
   transition: all 0.2s ease;
   cursor: pointer;
-  
+
   &:hover {
-    transform: scale(1.1);
+    transform: scale(1.1) rotate(360deg);
     box-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
+    transition: transform 0.5s ease-in-out, box-shadow 0.3s ease;
+  }
+  @media (max-width: 768px) {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
   }
 `;
 
 const InviteCode = styled.div`
-  position: absolute;
-  margin-top: 1rem;
+  margin-bottom: 2rem;
   text-align: center;
   color: #e5e7eb;
+  @media (max-width: 768px) {
+    margin-top:1.5rem;
+    margin-bottom: 0rem;
+  }
 `;
 
 const CodeDisplay = styled.div`
@@ -175,14 +912,10 @@ const CodeDisplay = styled.div`
   border: 1px solid #4f46e5;
   cursor: pointer;
   transition: all 0.2s ease;
-  
+
   &:hover {
     background: rgba(79, 70, 229, 0.2);
     transform: translateY(-2px);
-  }
-  
-  &:active {
-    transform: translateY(0);
   }
 `;
 
@@ -190,114 +923,106 @@ const CodeLabel = styled.div`
   font-size: 0.875rem;
   color: #94a3b8;
   margin-bottom: 0.25rem;
+  
 `;
 
 const ViewContainer = styled.div<{ $isActive: boolean }>`
   width: 100%;
   transition: opacity 0.3s ease, transform 0.3s ease;
-  position: ${({ $isActive }) => ($isActive ? 'relative' : 'absolute')};
+  position: ${({ $isActive }) => ($isActive ? "relative" : "absolute")};
   opacity: ${({ $isActive }) => ($isActive ? 1 : 0)};
-  pointer-events: ${({ $isActive }) => ($isActive ? 'auto' : 'none')};
-  transform: ${({ $isActive }) => ($isActive ? 'translateY(0)' : 'translateY(20px)')};
+  pointer-events: ${({ $isActive }) => ($isActive ? "auto" : "none")};
+  transform: ${({ $isActive }) => ($isActive ? "translateY(0)" : "translateY(20px)")};
 `;
 
-const StarryBackground = () => {
-  const [stars, setStars] = useState<Array<{ id: number, top: string, left: string, delay: string }>>([]);
-  useEffect(() => {
-    const starsArray = Array(100).fill(0).map((_, i) => ({
-      id: i,
-      top: `${Math.random() * 100}%`,
-      left: `${Math.random() * 100}%`,
-      delay: `${Math.random() * 3}s`
-    }));
-    setStars(starsArray);
-  }, []);
-  return (
-    <StarBackground>
-      {stars.map(star => (
-        <Star
-          key={star.id}
-          $top={star.top}
-          $left={star.left}
-          $delay={star.delay}
-        />
-      ))}
-    </StarBackground>
-  );
-};
-
-export default function Home() {
-  const [showThemes, setShowThemes] = useState(false);
-  const [inviteCode, setInviteCode] = useState('');
-  const [isCopied, setIsCopied] = useState(false);
-
-  useEffect(() => {
-    const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluding similar looking characters
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-      code += characters.charAt(Math.floor(Math.random() * characters.length));
-    }
-    setInviteCode(code);
-  }, []);
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(inviteCode);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
-  };
-
-  return (
-    <>
-      <StarryBackground />
-      <PageContainer>
-        <GlowEffect />
-        <PlayerContainer>
-          <Bar>
-            <Player>
-              <AstronautAvatar size={100} />
-              <PlayerName>Player 101</PlayerName>
-            </Player>
-          </Bar>
-          <Bar_2>
-            <VoteBadge>
-              <Image
-                src="/Vote_V.png"
-                alt="Vote V"
-                width={50}
-                height={50}
-                priority
-              />
-            </VoteBadge>
-            <Settings>
-              <FaCog />
-            </Settings>
-          </Bar_2>
-
-        </PlayerContainer>
-        <MainContainer>
-          <InviteCode>
-            <CodeLabel>Invite Code</CodeLabel>
-            <CodeDisplay onClick={copyToClipboard} title="Click to copy">
-              {inviteCode || 'Generating...'}
-              {isCopied && <span style={{
-                marginLeft: '0.5rem',
-                fontSize: '0.8rem',
-                color: '#4ade80',
-                opacity: isCopied ? 1 : 0,
-                transition: 'opacity 0.3s ease'
-              }}>Copied!</span>}
-            </CodeDisplay>
-          </InviteCode>
-          <Title> Imposter Game</Title>
-          <ViewContainer $isActive={!showThemes}>
-            <Lobby onStartGame={() => setShowThemes(true)} />
-          </ViewContainer>
-
-          <ViewContainer $isActive={showThemes}>
-            <Themes onBack={() => setShowThemes(false)} />
-          </ViewContainer>
-        </MainContainer>
-      </PageContainer>
-    </>
-  );
+const ModalOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  ::-webkit-scrollbar {
+  width: 12px;
 }
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+  border-radius: 10px;
+  margin: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #475569 0%, #334155 100%);
+  border-radius: 10px;
+  border: 2px solid rgba(15, 23, 42, 0.4);
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #64748b 0%, #475569 100%);
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.3);
+  pointer-events: none;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%);
+}
+
+/* Custom Scrollbar - Horizontal */
+::-webkit-scrollbar:horizontal {
+  height: 12px;
+}
+
+::-webkit-scrollbar-track:horizontal {
+  background: rgba(15, 23, 42, 0.4);
+  border-radius: 10px;
+  margin: 4px;
+}
+
+::-webkit-scrollbar-thumb:horizontal {
+  background: linear-gradient(90deg, #475569 0%, #334155 100%);
+  border-radius: 10px;
+  border: 2px solid rgba(15, 23, 42, 0.4);
+}
+
+::-webkit-scrollbar-thumb:horizontal:hover {
+  background: linear-gradient(90deg, #64748b 0%, #475569 100%);
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.3);
+  pointer-events: pointer;
+}
+
+`;
+
+const ModalCard = styled.div`
+  width: min(980px, 95vw);
+  max-height: 90vh;
+  overflow: auto;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.5);
+  position: relative;
+`;
+
+const CloseBtn = styled.button`
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(30, 41, 59, 0.65);
+  color: #e2e8f0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(30, 41, 59, 0.9);
+  }
+`;
+

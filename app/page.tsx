@@ -13,6 +13,12 @@ import SettingsPanel from "@/components/settings";
 
 import { PlayerAvatar } from "@/components/avatars/PlayerAvatar";
 import AvatarSkinScope from "@/components/avatars/AvatarSkinScope";
+import { Orbitron } from "next/font/google";
+
+const orbitron = Orbitron({
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
+});
 
 
 import type { Player } from "@/types/player";
@@ -475,7 +481,13 @@ const handleStartGame = useCallback(async () => {
             </InviteCode>
           )}
 
-          {!inviteCode && <Title>Imposter Game</Title>}
+          {!inviteCode && (
+            <Title data-text="Imposter Game" className={orbitron.className}>
+              Imposter Game
+              <span className="scan" />
+            </Title>
+          )}
+
 
           {/* ✅ game view */}
           {isInGame ? (
@@ -672,22 +684,76 @@ const Star = styled.div<{
   animation-delay: ${({ $delay }) => $delay}s;
 `;
 
+const impostorFlicker = keyframes`
+  0%, 100% { opacity: 1; transform: translateY(0); }
+  50%      { opacity: 0.98; transform: translateY(0.5px); }
+`;
 
+const glitchShift = keyframes`
+  0%   { transform: translate(0,0); opacity: 0; }
+  8%   { transform: translate(0,0); opacity: 0; }
+  10%  { transform: translate(1px,0); opacity: 0.12; }
+  12%  { transform: translate(-1px,0); opacity: 0.10; }
+  14%  { transform: translate(0,0); opacity: 0; }
+  100% { transform: translate(0,0); opacity: 0; }
+`;
 
+const scanSweep = keyframes`
+  0%   { transform: translateY(-120%); opacity: 0; }
+  10%  { opacity: 0.18; }
+  50%  { opacity: 0.12; }
+  100% { transform: translateY(140%); opacity: 0; }
+`;
 
-const Title = styled.h1`
-  font-size: 3.5rem;
-  font-weight: 700;
-  margin-bottom: 2rem;
-  text-align: center;
-  background: linear-gradient(45deg, #3b82f6, #8b5cf6);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  @media (max-width: 768px) {
-    font-size: 2.5rem;
+const bloodPulse = keyframes`
+  0%, 100% {
+    filter: drop-shadow(0 2px 10px rgba(0,0,0,0.9))
+            drop-shadow(0 0 18px rgba(220,38,38,0.35))
+            drop-shadow(0 0 34px rgba(220,38,38,0.18));
+  }
+  50% {
+    filter: drop-shadow(0 2px 12px rgba(0,0,0,0.95))
+            drop-shadow(0 0 26px rgba(255,45,85,0.55))
+            drop-shadow(0 0 46px rgba(255,45,85,0.26));
   }
 `;
+
+const shineSweep = keyframes`
+  0%   { transform: translateX(-130%) skewX(-20deg); opacity: 0; }
+  12%  { opacity: 0.0; }
+  22%  { opacity: 0.35; }
+  32%  { opacity: 0.0; }
+  100% { transform: translateX(130%) skewX(-20deg); opacity: 0; }
+`;
+
+const Title = styled.h1`
+  position: relative;
+  text-align: center;
+  margin: 0 0 2rem;
+
+  font-size: 3.6rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  line-height: 1.05;
+
+  /* ✅ “imposter red” men fortsatt leslig */
+  color: #ff2d55; /* hot blood */
+  text-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.95),
+    0 0 14px rgba(220, 38, 38, 0.45),
+    0 0 28px rgba(220, 38, 38, 0.22);
+
+  animation: ${bloodPulse} 3.8s ease-in-out infinite;
+
+ 
+
+ 
+
+  @media (max-width: 768px) {
+    font-size: 2.6rem;
+  }
+`;
+
 
 const GlowEffect = styled.div`
   position: absolute;

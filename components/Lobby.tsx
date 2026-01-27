@@ -80,6 +80,26 @@ export default function Lobby({
   const [avatarType, setAvatarType] = useState<AvatarType>("classicAstronaut");
   const [skin, setSkin] = useState<AvatarSkin>("classic");
 
+  // Toggle hyperspeed effect
+  const toggleHyperspeed = (active: boolean, source: string) => {
+    console.log(`[Hyperspeed] ${active ? 'ON' : 'OFF'} - ${source}`);
+    onHyperspeed?.(active);
+  };
+
+  // Handle mouse enter for buttons
+  const handleMouseEnter = () => {
+    if (mode === 'menu' && !showJoinForm) {
+      toggleHyperspeed(true, 'button hover');
+    }
+  };
+
+  // Handle mouse leave for buttons
+  const handleMouseLeave = () => {
+    if (mode === 'menu' && !showJoinForm) {
+      toggleHyperspeed(false, 'button leave');
+    }
+  };
+
   useEffect(() => {
     if (!uid) return;
     setAvatarType(readType(uid));
@@ -99,21 +119,18 @@ export default function Lobby({
   useEffect(() => {
     if (mode !== "menu") {
       // Ensure hyperspeed is off when not in menu mode
-      onHyperspeed?.(false);
+      toggleHyperspeed(false, 'mode changed');
       return;
     }
     
-    if (showJoinForm) {
-      onHyperspeed?.(true);
-    } else {
-      onHyperspeed?.(false);
-    }
+    // Toggle hyperspeed based on join form visibility
+    toggleHyperspeed(showJoinForm, 'join form visibility');
     
     // Cleanup function to ensure hyperspeed is turned off when component unmounts
     return () => {
-      onHyperspeed?.(false);
+      toggleHyperspeed(false, 'component unmount');
     };
-  }, [mode, showJoinForm, onHyperspeed]);
+  }, [mode, showJoinForm]);
 
 
 
@@ -129,7 +146,7 @@ export default function Lobby({
   return (
     <LobbyContainer>
       <h2 style={{ fontSize: "2.5rem", color: "#e2e8f0", marginBottom: "1rem", textAlign: "center" }}>
-        {mode === "menu" ? "Start" : "Lobby"}
+        {mode === "menu" ? "" : "Lobby"}
       </h2>
 
       {/* PLAYERS always visible in room mode, optional in menu mode */}
@@ -159,13 +176,17 @@ export default function Lobby({
       {/* MENU MODE */}
       {mode === "menu" && (
         <GameControls>
+          <h2 style={{ fontSize: "2.5rem", color: "#e2e8f0", marginBottom: "1rem", textAlign: "center" }}>
+        {mode === "menu" ? "Start" : ""}
+          </h2>
           {!showJoinForm ? (
             <>
               <Button
-                onMouseEnter={() => onHyperspeed?.(true)}
-                onMouseLeave={() => onHyperspeed?.(false)}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+                onMouseDown={() => toggleHyperspeed(false, 'create game mousedown')}
                 onClick={() => {
-                  onHyperspeed?.(false);
+                  toggleHyperspeed(false, 'create game click');
                   onCreateGame?.();
                 }}
                 $variant="primary"
@@ -177,10 +198,11 @@ export default function Lobby({
               <Divider>OR</Divider>
 
               <Button
-                onMouseEnter={() => onHyperspeed?.(true)}
-                onMouseLeave={() => onHyperspeed?.(false)}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+                onMouseDown={() => toggleHyperspeed(false, 'join game mousedown')}
                 onClick={() => {
-                  onHyperspeed?.(false);
+                  toggleHyperspeed(false, 'join game click');
                   setShowJoinForm(true);
                 }}
                 $variant="secondary"
